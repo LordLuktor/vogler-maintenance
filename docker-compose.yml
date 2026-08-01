@@ -1,0 +1,123 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vogler_maintenance
+      POSTGRES_USER: vogler
+      POSTGRES_PASSWORD_FILE: /run/secrets/vogler_db_password
+    secrets:
+      - vogler_db_password
+    volumes:
+      - vogler_postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vogler -d vogler_maintenance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "redis-server --requirepass \"$$(cat /run/secrets/vogler_redis_password)\""]
+    secrets:
+      - vogler_redis_password
+    networks:
+      - internal
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  api:
+    image: vogler-maintenance-api:latest
+    build: ./api
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: vogler
+      DB_NAME: vogler_maintenance
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PUBLIC_APP_URL: "https://maintenance.steinmetz.ltd"
+      SMTP_HOST: smtp.purelymail.com
+      SMTP_PORT: "465"
+      SMTP_USER: maintenance@steinmetz.ltd
+      ALERT_EMAIL: steinmetz.scott@gmail.com
+    secrets:
+      - vogler_db_password
+      - vogler_redis_password
+      - vogler_jwt_secret
+      - vogler_smtp_password
+    volumes:
+      - vogler_uploads:/app/uploads
+      - vogler_receipts:/app/receipts
+    networks:
+      - internal
+      - traefik-public
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+        - "traefik.http.routers.vogler-api.rule=Host(`maintenance.steinmetz.ltd`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`))"
+        - "traefik.http.routers.vogler-api.priority=10"
+        - "traefik.http.routers.vogler-api.entrypoints=websecure"
+        - "traefik.http.routers.vogler-api.tls.certresolver=letsencrypt"
+        - "traefik.http.services.vogler-api.loadbalancer.server.port=3000"
+    depends_on:
+      - postgres
+      - redis
+
+  web:
+    image: vogler-maintenance-web:latest
+    build: ./web
+    networks:
+      - traefik-public
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=traefik-public"
+        - "traefik.http.routers.vogler-web.rule=Host(`maintenance.steinmetz.ltd`)"
+        - "traefik.http.routers.vogler-web.priority=1"
+        - "traefik.http.routers.vogler-web.entrypoints=websecure"
+        - "traefik.http.routers.vogler-web.tls.certresolver=letsencrypt"
+        - "traefik.http.services.vogler-web.loadbalancer.server.port=80"
+
+networks:
+  internal:
+    driver: overlay
+  traefik-public:
+    external: true
+
+volumes:
+  vogler_postgres_data:
+  vogler_uploads:
+  vogler_receipts:
+
+secrets:
+  vogler_db_password:
+    external: true
+  vogler_redis_password:
+    external: true
+  vogler_jwt_secret:
+    external: true
+  vogler_smtp_password:
+    external: true
