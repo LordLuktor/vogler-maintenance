@@ -17,3 +17,7 @@ Built solo, end to end: API, dashboard, database schema, and deployment.
 Location names in the seed data and screenshots are placeholders — the real deployment runs against the actual client's site list.
 
 Live case study: [scottsteinmetz.biz/case-studies](https://scottsteinmetz.biz/case-studies)
+
+---
+
+**Note for future updates:** this repo is a manually-pushed snapshot, not an auto-synced mirror. The live deployment source lives elsewhere and this `origin` isn't wired into it. Before pushing any update here, re-check for real client location names and credentials — nothing in the working copy should identify the actual client sites beyond what's already public knowledge.
