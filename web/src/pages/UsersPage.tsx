@@ -113,7 +113,7 @@ export default function UsersPage() {
     <div className="page">
       <div className="header">
         <h1>Users</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
             Inventory
           </Link>

@@ -160,7 +160,7 @@ export default function TicketDetailPage() {
     <div className="page">
       <div className="header">
         <h1>Ticket #{ticket.id}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {isAdmin && (
             <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
               Inventory

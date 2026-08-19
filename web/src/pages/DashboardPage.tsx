@@ -48,7 +48,7 @@ export default function DashboardPage() {
     <div className="page">
       <div className="header">
         <h1>Maintenance Dashboard</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link to="/report" className="btn btn-primary">
             New Ticket
           </Link>
