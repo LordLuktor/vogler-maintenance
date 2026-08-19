@@ -7,6 +7,7 @@ export default function AssetsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState("");
 
+  const [editingAssetId, setEditingAssetId] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [newHomeLocationId, setNewHomeLocationId] = useState("");
   const [newNotes, setNewNotes] = useState("");
@@ -23,7 +24,23 @@ export default function AssetsPage() {
     api.getLocations(true).then(setLocations).catch(() => setLocations([]));
   }, []);
 
-  async function handleCreate(e: React.FormEvent) {
+  function resetForm() {
+    setEditingAssetId(null);
+    setNewName("");
+    setNewHomeLocationId("");
+    setNewNotes("");
+    setError("");
+  }
+
+  function startEdit(asset: Asset) {
+    setEditingAssetId(asset.id);
+    setNewName(asset.name);
+    setNewHomeLocationId(String(asset.home_location_id));
+    setNewNotes(asset.notes || "");
+    setError("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     if (!newName.trim() || !newHomeLocationId) {
@@ -32,17 +49,23 @@ export default function AssetsPage() {
     }
     setCreating(true);
     try {
-      await api.createAsset({
-        name: newName.trim(),
-        home_location_id: Number(newHomeLocationId),
-        notes: newNotes.trim() || undefined
-      });
-      setNewName("");
-      setNewHomeLocationId("");
-      setNewNotes("");
+      if (editingAssetId) {
+        await api.updateAsset(editingAssetId, {
+          name: newName.trim(),
+          home_location_id: Number(newHomeLocationId),
+          notes: newNotes.trim()
+        });
+      } else {
+        await api.createAsset({
+          name: newName.trim(),
+          home_location_id: Number(newHomeLocationId),
+          notes: newNotes.trim() || undefined
+        });
+      }
+      resetForm();
       loadAssets();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add that asset.");
+      setError(err instanceof Error ? err.message : "Couldn't save that asset.");
     } finally {
       setCreating(false);
     }
@@ -58,6 +81,7 @@ export default function AssetsPage() {
 
   async function handleDelete(asset: Asset) {
     await api.deleteAsset(asset.id);
+    if (editingAssetId === asset.id) resetForm();
     loadAssets();
   }
 
@@ -70,8 +94,8 @@ export default function AssetsPage() {
         </Link>
       </div>
 
-      <form className="card" onSubmit={handleCreate}>
-        <h2 style={{ marginTop: 0 }}>Add an asset</h2>
+      <form className="card" onSubmit={handleSubmit}>
+        <h2 style={{ marginTop: 0 }}>{editingAssetId ? "Edit asset" : "Add an asset"}</h2>
         <p className="muted" style={{ marginTop: 0 }}>
           For shared equipment usable at any location but stored at one — like a tractor.
         </p>
@@ -95,9 +119,16 @@ export default function AssetsPage() {
           <input id="assetNotes" value={newNotes} onChange={(e) => setNewNotes(e.target.value)} />
         </div>
         {error && <p className="error-text">{error}</p>}
-        <button className="btn btn-primary" type="submit" disabled={creating}>
-          {creating ? "Adding…" : "Add asset"}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-primary" type="submit" disabled={creating}>
+            {creating ? "Saving…" : editingAssetId ? "Save changes" : "Add asset"}
+          </button>
+          {editingAssetId && (
+            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={resetForm}>
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
 
       {assets.length === 0 && <p className="muted">No assets yet.</p>}
@@ -126,6 +157,9 @@ export default function AssetsPage() {
             </select>
             <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleMove(asset)}>
               Move
+            </button>
+            <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => startEdit(asset)}>
+              Edit
             </button>
             <button className="btn" style={{ background: "#fee2e2" }} onClick={() => handleDelete(asset)}>
               Delete
