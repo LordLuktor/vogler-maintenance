@@ -16,7 +16,11 @@ export default function LoginPage() {
     try {
       const { token, user } = await api.login(email, password);
       setToken(token);
-      setSession({ is_admin: user.is_admin, all_locations: user.all_locations });
+      setSession({
+        is_admin: user.is_admin,
+        all_locations: user.all_locations,
+        can_view_receipts: user.can_view_receipts
+      });
       navigate("/dashboard");
     } catch {
       setError("Invalid email or password.");

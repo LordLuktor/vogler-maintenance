@@ -123,6 +123,8 @@ input, select, textarea {
 .pill-acknowledged { background: #fef3c7; color: #92400e; }
 .pill-in_progress { background: #fed7aa; color: #9a3412; }
 .pill-done { background: #dcfce7; color: #166534; }
+.pill-rejected { background: #fee2e2; color: #991b1b; }
+.pill-duplicate { background: #e5e7eb; color: #374151; }
 
 .pill-priority-low { background: #f1f5f9; color: #475569; }
 .pill-priority-normal { background: #e0e7ff; color: #3730a3; }

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, getSession, Equipment, InventoryItem, ItemUsage, Location, Ticket } from "../api/client";
 import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
 
-const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done"];
+const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"];
 
 export default function TicketDetailPage() {
   const { id } = useParams();
@@ -14,6 +14,8 @@ export default function TicketDetailPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [usageRows, setUsageRows] = useState<ItemUsage[]>([]);
   const [loggingUsage, setLoggingUsage] = useState(false);
+  const [statusNotes, setStatusNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -28,7 +30,10 @@ export default function TicketDetailPage() {
   const [editError, setEditError] = useState("");
 
   useEffect(() => {
-    if (id) api.getTicket(Number(id)).then(setTicket);
+    if (id) api.getTicket(Number(id)).then((t) => {
+      setTicket(t);
+      setStatusNotes(t.status_notes || "");
+    });
   }, [id]);
 
   useEffect(() => {
@@ -100,10 +105,23 @@ export default function TicketDetailPage() {
     if (!ticket) return;
     setUpdating(true);
     try {
-      const updated = await api.updateTicketStatus(ticket.id, status);
+      // Send along whatever's currently typed in the notes box so picking "rejected" right
+      // after typing a reason captures both in one save, instead of needing two.
+      const updated = await api.updateTicketStatus(ticket.id, status, undefined, statusNotes);
       setTicket({ ...ticket, ...updated });
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleSaveNotes() {
+    if (!ticket) return;
+    setSavingNotes(true);
+    try {
+      const updated = await api.updateTicketStatus(ticket.id, ticket.status, undefined, statusNotes);
+      setTicket({ ...ticket, ...updated });
+    } finally {
+      setSavingNotes(false);
     }
   }
 
@@ -237,6 +255,14 @@ export default function TicketDetailPage() {
             <span className={`pill pill-priority-${ticket.priority}`}>{ticket.priority}</span>
             <span className="muted">Reported via {ticket.source} on {new Date(ticket.created_at).toLocaleString()}</span>
           </div>
+          {ticket.reporter_name && (
+            <p className="muted" style={{ margin: "0 0 8px" }}>Reported by {ticket.reporter_name}</p>
+          )}
+          {ticket.reporter_email && (
+            <p className="muted" style={{ margin: "0 0 8px" }}>
+              Emailing updates to {ticket.reporter_email}
+            </p>
+          )}
 
           {ticket.photos && ticket.photos.length > 0 && (
             <div className="photo-thumbs">
@@ -278,6 +304,25 @@ export default function TicketDetailPage() {
             </option>
           ))}
         </select>
+
+        <label htmlFor="statusNotes" style={{ fontWeight: 600, display: "block", margin: "16px 0 8px" }}>
+          Notes {ticket.status === "rejected" ? "(why was this rejected?)" : "(optional)"}
+        </label>
+        <textarea
+          id="statusNotes"
+          value={statusNotes}
+          onChange={(e) => setStatusNotes(e.target.value)}
+          placeholder="e.g. Duplicate of ticket #42, or: not a maintenance issue"
+        />
+        <button
+          type="button"
+          className="btn"
+          style={{ background: "#e2e4e9", marginTop: 8 }}
+          onClick={handleSaveNotes}
+          disabled={savingNotes || statusNotes === (ticket.status_notes || "")}
+        >
+          {savingNotes ? "Saving…" : "Save notes"}
+        </button>
       </div>
 
       {isAdmin && (

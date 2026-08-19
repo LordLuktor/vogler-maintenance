@@ -17,6 +17,7 @@ export default function ReportPage() {
   const [description, setDescription] = useState("");
   const [reporterName, setReporterName] = useState("");
   const [reporterPhone, setReporterPhone] = useState("");
+  const [reporterEmail, setReporterEmail] = useState("");
   const [priority, setPriority] = useState("normal");
   const [photos, setPhotos] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +58,7 @@ export default function ReportPage() {
       formData.set("description", description.trim());
       if (reporterName.trim()) formData.set("reporter_name", reporterName.trim());
       if (reporterPhone.trim()) formData.set("reporter_phone", reporterPhone.trim());
+      if (reporterEmail.trim()) formData.set("reporter_email", reporterEmail.trim());
       formData.set("priority", priority);
       photos.forEach((photo) => formData.append("photos", photo));
 
@@ -186,6 +188,17 @@ export default function ReportPage() {
             type="tel"
             value={reporterPhone}
             onChange={(e) => setReporterPhone(e.target.value)}
+          />
+        </div>
+
+        <div className="field">
+          <label htmlFor="reporterEmail">Your email (optional, to get updates on this ticket)</label>
+          <input
+            id="reporterEmail"
+            type="email"
+            value={reporterEmail}
+            onChange={(e) => setReporterEmail(e.target.value)}
+            placeholder="you@example.com"
           />
         </div>
 

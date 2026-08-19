@@ -12,7 +12,7 @@ usersRouter.use(requireAuth);
 usersRouter.use(requireAdmin);
 
 usersRouter.get("/", async (_req, res) => {
-  const users = await db("users").select("id", "email", "name", "is_admin", "all_locations");
+  const users = await db("users").select("id", "email", "name", "is_admin", "all_locations", "can_view_receipts");
   const locationRows = await db("user_locations as ul")
     .join("locations as l", "l.id", "ul.location_id")
     .select("ul.user_id", "l.id as location_id", "l.name as location_name");
@@ -31,8 +31,12 @@ usersRouter.post(
   "/",
   body("email").isEmail().trim(),
   body("name").optional().isString().trim().isLength({ max: 200 }),
+  // Admin-set initial password is optional — when omitted we fall back to the invite-link
+  // flow below, same as before this field existed.
+  body("password").optional().isString().isLength({ min: 8 }),
   body("is_admin").optional().isBoolean().toBoolean(),
   body("all_locations").optional().isBoolean().toBoolean(),
+  body("can_view_receipts").optional().isBoolean().toBoolean(),
   body("location_ids").optional().isArray(),
   body("location_ids.*").isInt().toInt(),
   async (req: Request, res: Response) => {
@@ -48,18 +52,24 @@ usersRouter.post(
       return;
     }
 
-    // No usable password is ever set here — the admin creating this account never sees or
-    // chooses a credential. A random, immediately-discarded hash fills the NOT NULL column,
-    // and the invite email's reset-token flow is the only way to actually set one.
-    const placeholderHash = await bcrypt.hash(randomBytes(32).toString("hex"), 12);
+    // If the admin supplied a password, use it directly — the user can log in with it
+    // right away and change it themselves afterward via the normal forgot-password flow.
+    // Otherwise fall back to the old behavior: a random, immediately-discarded hash fills
+    // the NOT NULL column, and the invite email's reset-token flow is the only way to set
+    // a real one.
+    const password: string | undefined = req.body.password;
+    const passwordHash = password
+      ? await bcrypt.hash(password, 12)
+      : await bcrypt.hash(randomBytes(32).toString("hex"), 12);
 
     const [user] = await db("users")
       .insert({
         email: req.body.email,
         name: req.body.name || null,
-        password_hash: placeholderHash,
+        password_hash: passwordHash,
         is_admin: req.body.is_admin || false,
-        all_locations: req.body.all_locations || false
+        all_locations: req.body.all_locations || false,
+        can_view_receipts: req.body.can_view_receipts || false
       })
       .returning("*");
 
@@ -68,7 +78,9 @@ usersRouter.post(
       await db("user_locations").insert(locationIds.map((location_id) => ({ user_id: user.id, location_id })));
     }
 
-    await sendPasswordSetupLink(user.id, user.email, "invite");
+    if (!password) {
+      await sendPasswordSetupLink(user.id, user.email, "invite");
+    }
 
     res.status(201).json({ id: user.id, email: user.email });
   }
@@ -79,6 +91,7 @@ usersRouter.patch(
   body("name").optional().isString().trim().isLength({ max: 200 }),
   body("is_admin").optional().isBoolean().toBoolean(),
   body("all_locations").optional().isBoolean().toBoolean(),
+  body("can_view_receipts").optional().isBoolean().toBoolean(),
   body("location_ids").optional().isArray(),
   body("location_ids.*").isInt().toInt(),
   async (req: Request, res: Response) => {
@@ -108,7 +121,7 @@ usersRouter.patch(
       }
     }
 
-    const allowed = ["name", "is_admin", "all_locations"] as const;
+    const allowed = ["name", "is_admin", "all_locations", "can_view_receipts"] as const;
     const update: Record<string, unknown> = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) update[key] = req.body[key];
@@ -125,7 +138,9 @@ usersRouter.patch(
       }
     }
 
-    const updated = await db("users").where({ id: userId }).first("id", "email", "name", "is_admin", "all_locations");
+    const updated = await db("users")
+      .where({ id: userId })
+      .first("id", "email", "name", "is_admin", "all_locations", "can_view_receipts");
     res.json(updated);
   }
 );

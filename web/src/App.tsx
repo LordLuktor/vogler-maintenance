@@ -11,6 +11,7 @@ import UsersPage from "./pages/UsersPage";
 import InventoryPage from "./pages/InventoryPage";
 import AssetsPage from "./pages/AssetsPage";
 import ReceiptsPage from "./pages/ReceiptsPage";
+import LocationsPage from "./pages/LocationsPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -75,6 +76,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <AssetsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/locations"
+          element={
+            <RequireAdmin>
+              <LocationsPage />
             </RequireAdmin>
           }
         />

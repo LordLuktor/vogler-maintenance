@@ -8,7 +8,8 @@ function todayIsoDate(): string {
 }
 
 export default function ReceiptsPage() {
-  const isAdmin = getSession()?.is_admin ?? false;
+  const session = getSession();
+  const canViewReceipts = (session?.is_admin || session?.can_view_receipts) ?? false;
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -19,16 +20,16 @@ export default function ReceiptsPage() {
   const [submitted, setSubmitted] = useState(false);
 
   const [receipts, setReceipts] = useState<Receipt[]>([]);
-  const [loadingReceipts, setLoadingReceipts] = useState(isAdmin);
+  const [loadingReceipts, setLoadingReceipts] = useState(canViewReceipts);
   const [openingFileId, setOpeningFileId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canViewReceipts) return;
     api
       .getReceipts()
       .then(setReceipts)
       .finally(() => setLoadingReceipts(false));
-  }, [isAdmin]);
+  }, [canViewReceipts]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +54,7 @@ export default function ReceiptsPage() {
       setPurchasedAt(todayIsoDate());
       setFiles([]);
       setSubmitted(true);
-      if (isAdmin) api.getReceipts().then(setReceipts);
+      if (canViewReceipts) api.getReceipts().then(setReceipts);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't upload that receipt.");
     } finally {
@@ -118,7 +119,7 @@ export default function ReceiptsPage() {
         {submitted && <p className="muted" style={{ marginTop: 8 }}>Receipt uploaded.</p>}
       </form>
 
-      {isAdmin && (
+      {canViewReceipts && (
         <div className="card">
           <h2 style={{ marginTop: 0 }}>All receipts</h2>
           {loadingReceipts && <p className="muted">Loading…</p>}

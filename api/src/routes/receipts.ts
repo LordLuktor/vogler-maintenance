@@ -2,15 +2,16 @@ import { Router, Response } from "express";
 import path from "path";
 import { body, validationResult } from "express-validator";
 import { db } from "../db";
-import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/auth";
+import { requireAuth, requireReceiptsAccess, AuthedRequest } from "../middleware/auth";
 import { uploadReceiptFile, RECEIPTS_DIR } from "../services/receiptUpload";
 
 export const receiptsRouter = Router();
 
 receiptsRouter.use(requireAuth);
 
-// Any logged-in user can submit a receipt — viewing the archive is admin-only (see the
-// requireAdmin routes below), so uploaders don't get to browse each other's purchases.
+// Any logged-in user can submit a receipt — viewing the archive requires admin or the
+// narrower can_view_receipts role (see the requireReceiptsAccess routes below), so
+// uploaders don't get to browse each other's purchases unless granted that access.
 receiptsRouter.post(
   "/",
   uploadReceiptFile.array("files", 5),
@@ -53,7 +54,7 @@ receiptsRouter.post(
   }
 );
 
-receiptsRouter.get("/", requireAdmin, async (_req: AuthedRequest, res: Response) => {
+receiptsRouter.get("/", requireReceiptsAccess, async (_req: AuthedRequest, res: Response) => {
   const receipts = await db("receipts as r")
     .leftJoin("users as u", "u.id", "r.uploaded_by")
     .select("r.*", "u.name as uploaded_by_name", "u.email as uploaded_by_email")
@@ -70,7 +71,7 @@ receiptsRouter.get("/", requireAdmin, async (_req: AuthedRequest, res: Response)
   res.json(receipts.map((r) => ({ ...r, files: filesByReceipt.get(r.id) || [] })));
 });
 
-receiptsRouter.get("/:id/files/:fileId", requireAdmin, async (req: AuthedRequest, res: Response) => {
+receiptsRouter.get("/:id/files/:fileId", requireReceiptsAccess, async (req: AuthedRequest, res: Response) => {
   const receiptId = Number(req.params.id);
   const fileId = Number(req.params.fileId);
   if (!Number.isInteger(receiptId) || !Number.isInteger(fileId)) {

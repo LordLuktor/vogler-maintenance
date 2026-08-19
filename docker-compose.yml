@@ -58,7 +58,8 @@ services:
       - vogler_db_password
       - vogler_redis_password
       - vogler_jwt_secret
-      - vogler_smtp_password
+      - source: vogler_smtp_password_v2
+        target: vogler_smtp_password
     volumes:
       - vogler_uploads:/app/uploads
       - vogler_receipts:/app/receipts
@@ -119,5 +120,5 @@ secrets:
     external: true
   vogler_jwt_secret:
     external: true
-  vogler_smtp_password:
+  vogler_smtp_password_v2:
     external: true

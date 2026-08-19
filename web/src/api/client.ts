@@ -4,6 +4,7 @@ const SESSION_KEY = "vogler_session";
 export interface Session {
   is_admin: boolean;
   all_locations: boolean;
+  can_view_receipts: boolean;
 }
 
 export function getToken(): string | null {
@@ -74,6 +75,13 @@ export interface Location {
   type: string;
 }
 
+export interface LocationDetail extends Location {
+  address: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+}
+
 export interface Equipment {
   id: number;
   name: string;
@@ -88,7 +96,10 @@ export interface Ticket {
   equipment_name: string | null;
   issue_type: string;
   description: string;
-  status: "new" | "acknowledged" | "in_progress" | "done";
+  reporter_name: string | null;
+  reporter_email: string | null;
+  status: "new" | "acknowledged" | "in_progress" | "done" | "rejected" | "duplicate";
+  status_notes: string | null;
   priority: "low" | "normal" | "high" | "urgent";
   source: "web" | "sms" | "pm";
   created_at: string;
@@ -117,6 +128,7 @@ export interface User {
   name: string | null;
   is_admin: boolean;
   all_locations: boolean;
+  can_view_receipts: boolean;
   locations: { id: number; name: string }[];
 }
 
@@ -203,7 +215,14 @@ export const api = {
   login: (email: string, password: string) =>
     request<{
       token: string;
-      user: { id: number; email: string; name: string | null; is_admin: boolean; all_locations: boolean };
+      user: {
+        id: number;
+        email: string;
+        name: string | null;
+        is_admin: boolean;
+        all_locations: boolean;
+        can_view_receipts: boolean;
+      };
     }>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password })
@@ -218,6 +237,9 @@ export const api = {
   getLocations: (includeVehicles = false) =>
     request<Location[]>(`/locations${includeVehicles ? "?include_vehicles=true" : ""}`),
   getLocationEquipment: (locationId: number) => request<Equipment[]>(`/locations/${locationId}/equipment`),
+  getLocationsFull: () => request<LocationDetail[]>("/locations/full"),
+  updateLocation: (id: number, data: { notes?: string }) =>
+    request<LocationDetail>(`/locations/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
   submitTicket: (formData: FormData) =>
     request<{ id: number }>("/tickets", { method: "POST", body: formData }),
@@ -233,10 +255,14 @@ export const api = {
 
   getTicket: (id: number) => request<Ticket>(`/tickets/${id}`),
 
-  updateTicketStatus: (id: number, status: Ticket["status"], itemsUsed?: ItemUsage[]) =>
+  updateTicketStatus: (id: number, status: Ticket["status"], itemsUsed?: ItemUsage[], notes?: string) =>
     request<Ticket>(`/tickets/${id}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status, ...(itemsUsed?.length ? { items_used: itemsUsed } : {}) })
+      body: JSON.stringify({
+        status,
+        ...(itemsUsed?.length ? { items_used: itemsUsed } : {}),
+        ...(notes !== undefined ? { notes } : {})
+      })
     }),
 
   updateTicket: (
@@ -278,14 +304,22 @@ export const api = {
   createUser: (data: {
     email: string;
     name?: string;
+    password?: string;
     is_admin: boolean;
     all_locations: boolean;
+    can_view_receipts: boolean;
     location_ids: number[];
   }) => request<{ id: number; email: string }>("/users", { method: "POST", body: JSON.stringify(data) }),
 
   updateUser: (
     id: number,
-    data: Partial<{ name: string; is_admin: boolean; all_locations: boolean; location_ids: number[] }>
+    data: Partial<{
+      name: string;
+      is_admin: boolean;
+      all_locations: boolean;
+      can_view_receipts: boolean;
+      location_ids: number[];
+    }>
   ) => request<User>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
   deleteUser: (id: number) => request<{ ok: boolean }>(`/users/${id}`, { method: "DELETE" }),

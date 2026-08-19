@@ -8,7 +8,9 @@ const STATUS_OPTIONS = [
   { value: "new", label: "New" },
   { value: "acknowledged", label: "Acknowledged" },
   { value: "in_progress", label: "In progress" },
-  { value: "done", label: "Done" }
+  { value: "done", label: "Done" },
+  { value: "rejected", label: "Rejected" },
+  { value: "duplicate", label: "Duplicate" }
 ];
 
 export default function DashboardPage() {
@@ -17,7 +19,7 @@ export default function DashboardPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [status, setStatus] = useState("");
-  const [excludeStatuses, setExcludeStatuses] = useState<string[]>(["done"]);
+  const [excludeStatuses, setExcludeStatuses] = useState<string[]>(["done", "rejected", "duplicate"]);
   const [locationId, setLocationId] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +64,11 @@ export default function DashboardPage() {
             </Link>
           )}
           {isAdmin && (
+            <Link to="/locations" className="btn" style={{ background: "#e2e4e9" }}>
+              Locations
+            </Link>
+          )}
+          {isAdmin && (
             <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
               Inventory
             </Link>
@@ -84,6 +91,8 @@ export default function DashboardPage() {
           <option value="acknowledged">Acknowledged</option>
           <option value="in_progress">In progress</option>
           <option value="done">Done</option>
+          <option value="rejected">Rejected</option>
+          <option value="duplicate">Duplicate</option>
         </select>
         <MultiSelectDropdown
           options={STATUS_OPTIONS}

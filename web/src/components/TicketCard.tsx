@@ -13,6 +13,7 @@ export default function TicketCard({ ticket }: { ticket: Ticket }) {
           </div>
           <p className="muted" style={{ margin: "6px 0" }}>{issueTypeLabel(ticket.issue_type)}</p>
           {ticket.description && <p style={{ margin: "0 0 6px" }}>{ticket.description}</p>}
+          {ticket.reporter_name && <p className="muted" style={{ margin: "0 0 6px" }}>Reported by {ticket.reporter_name}</p>}
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>

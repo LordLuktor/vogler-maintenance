@@ -20,4 +20,4 @@ Live case study: [scottsteinmetz.biz/case-studies](https://scottsteinmetz.biz/ca
 
 ---
 
-**Note for future updates:** this repo is a manually-pushed snapshot, not an auto-synced mirror. The live deployment source lives elsewhere and this `origin` isn't wired into it. Before pushing any update here, re-check for real client location names and credentials — nothing in the working copy should identify the actual client sites beyond what's already public knowledge.
+**Note for future updates:** this working tree *is* the deploy source — changes are built and pushed to the Swarm stack directly from here (`docker build` + `docker service update`), not from `origin`. That means it's easy for this git history to silently fall behind what's actually live. **Every change that gets deployed must also be committed and pushed here in the same pass** — don't treat the deploy and the repo update as separate/optional steps. Before pushing any update, re-check for real client location names and credentials — nothing in the working copy should identify the actual client sites beyond what's already public knowledge.

@@ -11,6 +11,7 @@ export interface AuthedUser {
   id: number;
   is_admin: boolean;
   all_locations: boolean;
+  can_view_receipts: boolean;
 }
 
 export interface AuthedRequest extends Request {
@@ -33,7 +34,9 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 
     // Looked up fresh on every request (not embedded in the JWT) so a permission change
     // takes effect immediately rather than waiting for the user's token to expire/refresh.
-    const user = await db("users").where({ id: payload.sub }).first("id", "is_admin", "all_locations");
+    const user = await db("users")
+      .where({ id: payload.sub })
+      .first("id", "is_admin", "all_locations", "can_view_receipts");
     if (!user) {
       res.status(401).json({ error: "Account no longer exists" });
       return;
@@ -61,7 +64,9 @@ export async function optionalAuth(req: AuthedRequest, _res: Response, next: Nex
   try {
     const payload = jwt.verify(token, jwtSecret());
     if (typeof payload !== "string" && typeof payload.sub === "number") {
-      const user = await db("users").where({ id: payload.sub }).first("id", "is_admin", "all_locations");
+      const user = await db("users")
+        .where({ id: payload.sub })
+        .first("id", "is_admin", "all_locations", "can_view_receipts");
       if (user) req.user = user;
     }
   } catch {
@@ -73,6 +78,16 @@ export async function optionalAuth(req: AuthedRequest, _res: Response, next: Nex
 export function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction): void {
   if (!req.user?.is_admin) {
     res.status(403).json({ error: "Admin access required" });
+    return;
+  }
+  next();
+}
+
+// Lets admins and the narrower "can view receipts" role both through, so a user can be
+// granted read access to the receipts archive without also getting full admin rights.
+export function requireReceiptsAccess(req: AuthedRequest, res: Response, next: NextFunction): void {
+  if (!req.user?.is_admin && !req.user?.can_view_receipts) {
+    res.status(403).json({ error: "Receipts access required" });
     return;
   }
   next();

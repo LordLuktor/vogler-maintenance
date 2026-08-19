@@ -4,7 +4,7 @@ import { body, query, validationResult } from "express-validator";
 import { db } from "../db";
 import { requireAuth, requireAdmin, optionalAuth, AuthedRequest } from "../middleware/auth";
 import { uploadPhoto } from "../services/upload";
-import { notifyNewTicket } from "../services/notify";
+import { notifyNewTicket, notifyTicketStatusChange } from "../services/notify";
 import { ISSUE_TYPES } from "../issueTypes";
 import { completeSchedule } from "../services/pmSchedules";
 import { getAllowedLocationIds } from "../services/permissions";
@@ -37,6 +37,9 @@ ticketsRouter.post(
   body("description").optional({ values: "falsy" }).isString().trim().isLength({ max: 2000 }),
   body("reporter_name").optional().isString().trim().isLength({ max: 200 }),
   body("reporter_phone").optional().isString().trim().isLength({ max: 30 }),
+  // .isEmail().trim() only — no .normalizeEmail(), which rewrites addresses (e.g. strips
+  // Gmail dots/+tags) and would send status updates to a string the reporter never typed.
+  body("reporter_email").optional({ values: "falsy" }).isString().trim().isEmail().isLength({ max: 255 }),
   body("priority").optional().isIn(["low", "normal", "high", "urgent"]),
   async (req: AuthedRequest, res) => {
     const errors = validationResult(req);
@@ -65,6 +68,7 @@ ticketsRouter.post(
         description,
         reporter_name: req.body.reporter_name || null,
         reporter_phone: req.body.reporter_phone || null,
+        reporter_email: req.body.reporter_email || null,
         priority: req.body.priority || "normal",
         source: "web",
         status: req.user ? "acknowledged" : "new"
@@ -94,14 +98,14 @@ ticketsRouter.use(requireAuth);
 
 ticketsRouter.get(
   "/",
-  query("status").optional().isIn(["new", "acknowledged", "in_progress", "done"]),
+  query("status").optional().isIn(["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"]),
   // Repeated query params (?exclude_status=a&exclude_status=b) arrive as an array —
   // normalize a single occurrence to a one-element array so the rest of the validation
   // and query-building logic only has to handle one shape.
   query("exclude_status")
     .optional()
     .customSanitizer((value) => (Array.isArray(value) ? value : [value]))
-    .custom((values: string[]) => values.every((v) => ["new", "acknowledged", "in_progress", "done"].includes(v))),
+    .custom((values: string[]) => values.every((v) => ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"].includes(v))),
   query("location_id").optional().isInt().toInt(),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
@@ -124,7 +128,7 @@ ticketsRouter.get(
         "e.name as equipment_name"
       )
       .orderByRaw(
-        `CASE t.status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'acknowledged' THEN 2 WHEN 'done' THEN 3 ELSE 4 END, t.created_at DESC`
+        `CASE t.status WHEN 'new' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'acknowledged' THEN 2 WHEN 'done' THEN 3 WHEN 'rejected' THEN 4 WHEN 'duplicate' THEN 5 ELSE 6 END, t.created_at DESC`
       );
 
     if (allowedIds !== null) {
@@ -176,7 +180,8 @@ ticketsRouter.get("/:id", async (req: AuthedRequest, res: Response) => {
 
 ticketsRouter.patch(
   "/:id/status",
-  body("status").isIn(["new", "acknowledged", "in_progress", "done"]),
+  body("status").isIn(["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"]),
+  body("notes").optional({ values: "falsy" }).isString().trim().isLength({ max: 2000 }),
   body("items_used").optional().isArray(),
   body("items_used.*.item_id").isInt().toInt(),
   body("items_used.*.quantity").isInt({ min: 1 }).toInt(),
@@ -201,8 +206,11 @@ ticketsRouter.patch(
     }
 
     const update: Record<string, unknown> = { status: req.body.status };
-    if (req.body.status === "done") {
+    if (req.body.status === "done" || req.body.status === "rejected" || req.body.status === "duplicate") {
       update.resolved_at = db.fn.now();
+    }
+    if (req.body.notes !== undefined) {
+      update.status_notes = req.body.notes || null;
     }
 
     const allowedIds = await getAllowedLocationIds(req.user!);
@@ -210,15 +218,32 @@ ticketsRouter.patch(
     if (allowedIds !== null) {
       updateQuery = updateQuery.whereIn("location_id", allowedIds);
     }
+
+    // Fetch the pre-update status so a same-status call (e.g. logging parts usage via this
+    // same endpoint) doesn't re-fire a "your ticket status changed" email to the reporter.
+    const before = await db("tickets").where({ id: ticketId }).first("status");
+
     const [ticket] = await updateQuery.update(update).returning("*");
     if (!ticket) {
       res.status(404).json({ error: "Ticket not found" });
       return;
     }
 
+    if (before && before.status !== ticket.status) {
+      await notifyTicketStatusChange(ticket);
+    }
+
     if (req.body.status === "done") {
       const schedule = await db("pm_schedules").where({ current_ticket_id: ticketId }).first();
       if (schedule) await completeSchedule(schedule.id, { ticketId });
+    }
+
+    // A rejected or duplicate PM-generated ticket didn't actually get the maintenance done,
+    // so don't record a completion — but the schedule's current_ticket_id still needs
+    // clearing, otherwise the scheduler's whereNull("current_ticket_id") guard would
+    // permanently block it from ever generating another ticket for this cycle.
+    if (req.body.status === "rejected" || req.body.status === "duplicate") {
+      await db("pm_schedules").where({ current_ticket_id: ticketId }).update({ current_ticket_id: null });
     }
 
     if (itemsUsed.length > 0) {

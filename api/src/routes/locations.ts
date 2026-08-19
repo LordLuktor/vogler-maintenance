@@ -22,6 +22,14 @@ locationsRouter.get(
   }
 );
 
+// Admin-only: full location records including notes/address/contact for the management page.
+// Kept separate from the public list above so that endpoint never has to worry about
+// leaking anything beyond id/name/type to an unauthenticated /report visitor.
+locationsRouter.get("/full", requireAuth, requireAdmin, async (_req, res) => {
+  const locations = await db("locations").select("*").orderBy("name");
+  res.json(locations);
+});
+
 locationsRouter.get("/:id/equipment", async (req, res) => {
   const locationId = Number(req.params.id);
   if (!Number.isInteger(locationId)) {
@@ -41,6 +49,7 @@ locationsRouter.post(
   body("address").optional().isString().trim().isLength({ max: 300 }),
   body("contact_name").optional().isString().trim().isLength({ max: 200 }),
   body("contact_phone").optional().isString().trim().isLength({ max: 30 }),
+  body("notes").optional().isString().trim().isLength({ max: 5000 }),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -61,6 +70,7 @@ locationsRouter.patch(
   body("address").optional().isString().trim().isLength({ max: 300 }),
   body("contact_name").optional().isString().trim().isLength({ max: 200 }),
   body("contact_phone").optional().isString().trim().isLength({ max: 30 }),
+  body("notes").optional({ nullable: true }).isString().trim().isLength({ max: 5000 }),
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

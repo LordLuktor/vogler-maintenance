@@ -61,7 +61,8 @@ authRouter.post(
         email: user.email,
         name: user.name,
         is_admin: user.is_admin,
-        all_locations: user.all_locations
+        all_locations: user.all_locations,
+        can_view_receipts: user.can_view_receipts
       }
     });
   }
