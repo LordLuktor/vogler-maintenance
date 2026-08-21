@@ -1,6 +1,6 @@
 import { db } from "../db";
 
-export type InventoryReason = "restock" | "manual_adjustment" | "ticket_use" | "pm_use";
+export type InventoryReason = "restock" | "manual_adjustment" | "ticket_use" | "pm_use" | "transfer_out" | "transfer_in";
 
 export interface AdjustStockParams {
   itemId: number;
@@ -50,6 +50,99 @@ export async function adjustStock(params: AdjustStockParams): Promise<AdjustStoc
 
     return {
       stock: { id: stock.id, quantity_on_hand: quantityAfter, reorder_threshold: threshold },
+      crossedBelowThreshold
+    };
+  });
+}
+
+export interface TransferStockParams {
+  itemId: number;
+  fromLocationId: number;
+  toLocationId: number;
+  quantity: number;
+  userId?: number | null;
+  notes?: string | null;
+}
+
+export type TransferStockResult =
+  | { ok: true; source: { id: number; quantity_on_hand: number; reorder_threshold: number }; destination: { id: number; quantity_on_hand: number }; crossedBelowThreshold: boolean }
+  | { ok: false; error: "no_source_stock" | "insufficient_stock" };
+
+/**
+ * Moves quantity of one item from one location to another as a single atomic
+ * operation, auto-creating the destination's stock row (at 0/0) if this item
+ * isn't tracked there yet — same as a fresh "start tracking" would, without
+ * requiring that as a separate manual step first.
+ *
+ * Both rows are locked in ascending location_id order (not "source then
+ * destination") so a concurrent transfer running the opposite direction
+ * between the same two locations locks in the same order and can't deadlock
+ * against this one.
+ */
+export async function transferStock(params: TransferStockParams): Promise<TransferStockResult> {
+  return db.transaction(async (trx) => {
+    const [firstLocationId, secondLocationId] =
+      params.fromLocationId < params.toLocationId
+        ? [params.fromLocationId, params.toLocationId]
+        : [params.toLocationId, params.fromLocationId];
+
+    const firstRow = await trx("inventory_stock")
+      .where({ item_id: params.itemId, location_id: firstLocationId })
+      .forUpdate()
+      .first();
+    const secondRow = await trx("inventory_stock")
+      .where({ item_id: params.itemId, location_id: secondLocationId })
+      .forUpdate()
+      .first();
+
+    const source = params.fromLocationId === firstLocationId ? firstRow : secondRow;
+    let destination = params.toLocationId === firstLocationId ? firstRow : secondRow;
+
+    if (!source) return { ok: false, error: "no_source_stock" };
+    if (source.quantity_on_hand < params.quantity) return { ok: false, error: "insufficient_stock" };
+
+    if (!destination) {
+      [destination] = await trx("inventory_stock")
+        .insert({ item_id: params.itemId, location_id: params.toLocationId, quantity_on_hand: 0, reorder_threshold: 0 })
+        .returning("*");
+    }
+
+    const sourceBefore = source.quantity_on_hand;
+    const sourceAfter = sourceBefore - params.quantity;
+    const threshold = source.reorder_threshold;
+    const destinationAfter = destination.quantity_on_hand + params.quantity;
+
+    await trx("inventory_stock").where({ id: source.id }).update({ quantity_on_hand: sourceAfter });
+    await trx("inventory_stock").where({ id: destination.id }).update({ quantity_on_hand: destinationAfter });
+
+    await trx("inventory_transactions").insert({
+      item_id: params.itemId,
+      location_id: params.fromLocationId,
+      quantity_delta: -params.quantity,
+      quantity_after: sourceAfter,
+      reason: "transfer_out",
+      user_id: params.userId ?? null,
+      notes: params.notes ?? null
+    });
+
+    await trx("inventory_transactions").insert({
+      item_id: params.itemId,
+      location_id: params.toLocationId,
+      quantity_delta: params.quantity,
+      quantity_after: destinationAfter,
+      reason: "transfer_in",
+      user_id: params.userId ?? null,
+      notes: params.notes ?? null
+    });
+
+    // Only the source side can cross below its threshold from a transfer out — same
+    // edge-triggered semantics as adjustStock().
+    const crossedBelowThreshold = threshold > 0 && sourceBefore >= threshold && sourceAfter < threshold;
+
+    return {
+      ok: true,
+      source: { id: source.id, quantity_on_hand: sourceAfter, reorder_threshold: threshold },
+      destination: { id: destination.id, quantity_on_hand: destinationAfter },
       crossedBelowThreshold
     };
   });

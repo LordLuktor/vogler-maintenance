@@ -168,7 +168,7 @@ export interface InventoryTransaction {
   location_name: string;
   quantity_delta: number;
   quantity_after: number;
-  reason: "restock" | "manual_adjustment" | "ticket_use" | "pm_use";
+  reason: "restock" | "manual_adjustment" | "ticket_use" | "pm_use" | "transfer_out" | "transfer_in";
   ticket_id: number | null;
   pm_schedule_id: number | null;
   notes: string | null;
@@ -367,6 +367,14 @@ export const api = {
     stockId: number,
     data: { quantity_delta: number; reason: "restock" | "manual_adjustment"; notes?: string }
   ) => request<InventoryStock>(`/inventory/stock/${stockId}/adjust`, { method: "POST", body: JSON.stringify(data) }),
+
+  transferInventoryStock: (data: { item_id: number; from_location_id: number; to_location_id: number; quantity: number; notes?: string }) =>
+    request<{
+      ok: true;
+      source: { id: number; quantity_on_hand: number; reorder_threshold: number };
+      destination: { id: number; quantity_on_hand: number };
+      crossedBelowThreshold: boolean;
+    }>("/inventory/stock/transfer", { method: "POST", body: JSON.stringify(data) }),
 
   getInventoryTransactions: (params: { location_id?: number; item_id?: number } = {}) => {
     const search = new URLSearchParams();

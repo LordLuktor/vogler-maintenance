@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { body, query, validationResult } from "express-validator";
 import { db } from "../db";
 import { requireAuth, requireAdmin, AuthedRequest } from "../middleware/auth";
-import { adjustStock, listItems, listStock, listTransactions } from "../services/inventory";
+import { adjustStock, listItems, listStock, listTransactions, transferStock } from "../services/inventory";
 import { notifyLowStock } from "../services/inventoryAlerts";
 import { lookupUpc } from "../services/upcLookup";
 
@@ -197,6 +197,69 @@ inventoryRouter.post(
     // state to cross down from yet, so this would just be noise on every new low-count item.
 
     res.status(201).json(stock);
+  }
+);
+
+// Declared before /stock/:id so the literal "transfer" segment isn't swallowed as an
+// :id param — same ordering gotcha as /items/lookup above (Express matches literal
+// segments in declaration order, and :id here has no digits-only constraint).
+inventoryRouter.post(
+  "/stock/transfer",
+  body("item_id").isInt().toInt(),
+  body("from_location_id").isInt().toInt(),
+  body("to_location_id").isInt().toInt(),
+  body("quantity").isInt({ min: 1 }).toInt(),
+  body("notes").optional().isString().trim().isLength({ max: 500 }),
+  async (req: AuthedRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: "Invalid input", details: errors.array() });
+      return;
+    }
+
+    if (req.body.from_location_id === req.body.to_location_id) {
+      res.status(400).json({ error: "Source and destination locations must be different" });
+      return;
+    }
+
+    const [item, fromLocation] = await Promise.all([
+      db("inventory_items").where({ id: req.body.item_id }).first("name", "unit"),
+      db("locations").where({ id: req.body.from_location_id }).first("name")
+    ]);
+    if (!item || !fromLocation) {
+      res.status(404).json({ error: "Item or location not found" });
+      return;
+    }
+
+    const result = await transferStock({
+      itemId: req.body.item_id,
+      fromLocationId: req.body.from_location_id,
+      toLocationId: req.body.to_location_id,
+      quantity: req.body.quantity,
+      userId: req.user!.id,
+      notes: req.body.notes || null
+    });
+
+    if (!result.ok) {
+      const message =
+        result.error === "no_source_stock"
+          ? "This item is not tracked at the source location"
+          : "Not enough stock at the source location to transfer that quantity";
+      res.status(400).json({ error: message });
+      return;
+    }
+
+    if (result.crossedBelowThreshold) {
+      await notifyLowStock({
+        itemName: item.name,
+        unit: item.unit,
+        locationName: fromLocation.name,
+        quantityAfter: result.source.quantity_on_hand,
+        threshold: result.source.reorder_threshold
+      });
+    }
+
+    res.json(result);
   }
 );
 

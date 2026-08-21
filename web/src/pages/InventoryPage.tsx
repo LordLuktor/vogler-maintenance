@@ -39,6 +39,15 @@ export default function InventoryPage() {
 
   const [adjustments, setAdjustments] = useState<Record<number, { delta: string; reason: "restock" | "manual_adjustment" }>>({});
 
+  const [transferItemId, setTransferItemId] = useState("");
+  const [transferFromLocationId, setTransferFromLocationId] = useState("");
+  const [transferToLocationId, setTransferToLocationId] = useState("");
+  const [transferQuantity, setTransferQuantity] = useState("");
+  const [transferNotes, setTransferNotes] = useState("");
+  const [transferring, setTransferring] = useState(false);
+  const [transferError, setTransferError] = useState("");
+  const [transferNotice, setTransferNotice] = useState("");
+
   function loadAll() {
     api.getInventoryItems().then(setItems).catch(() => setItems([]));
     api.getInventoryStock().then(setStock).catch(() => setStock([]));
@@ -192,6 +201,53 @@ export default function InventoryPage() {
       setError(err instanceof Error ? err.message : "Couldn't start tracking that item.");
     } finally {
       setCreatingStock(false);
+    }
+  }
+
+  async function handleTransfer(e: React.FormEvent) {
+    e.preventDefault();
+    setTransferError("");
+    setTransferNotice("");
+
+    const itemId = Number(transferItemId);
+    const fromLocationId = Number(transferFromLocationId);
+    const toLocationId = Number(transferToLocationId);
+    const quantity = Number(transferQuantity);
+
+    if (!itemId || !fromLocationId) {
+      setTransferError("Pick an item and a source location.");
+      return;
+    }
+    if (!toLocationId) {
+      setTransferError("Pick a destination location.");
+      return;
+    }
+    if (fromLocationId === toLocationId) {
+      setTransferError("Source and destination locations must be different.");
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      setTransferError("Enter a quantity of at least 1 to transfer.");
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      await api.transferInventoryStock({
+        item_id: itemId,
+        from_location_id: fromLocationId,
+        to_location_id: toLocationId,
+        quantity,
+        notes: transferNotes.trim() || undefined
+      });
+      setTransferQuantity("");
+      setTransferNotes("");
+      setTransferNotice("Stock transferred.");
+      loadAll();
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : "Couldn't transfer that stock.");
+    } finally {
+      setTransferring(false);
     }
   }
 
@@ -424,6 +480,62 @@ export default function InventoryPage() {
         </div>
         <button className="btn btn-primary" type="submit" disabled={creatingStock}>
           {creatingStock ? "Saving…" : "Start tracking"}
+        </button>
+      </form>
+
+      <form className="card" onSubmit={handleTransfer}>
+        <h2 style={{ marginTop: 0 }}>Transfer stock between locations</h2>
+        <div className="field">
+          <label htmlFor="transferItem">Item</label>
+          <select id="transferItem" value={transferItemId} onChange={(e) => setTransferItemId(e.target.value)}>
+            <option value="">Select an item…</option>
+            {items.filter((i) => i.active).map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="transferFrom">From location</label>
+          <select id="transferFrom" value={transferFromLocationId} onChange={(e) => setTransferFromLocationId(e.target.value)}>
+            <option value="">Select a location…</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="transferTo">To location</label>
+          <select id="transferTo" value={transferToLocationId} onChange={(e) => setTransferToLocationId(e.target.value)}>
+            <option value="">Select a location…</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="transferQuantity">Quantity</label>
+          <input
+            id="transferQuantity"
+            type="number"
+            min={1}
+            value={transferQuantity}
+            onChange={(e) => setTransferQuantity(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="transferNotes">Notes (optional)</label>
+          <input id="transferNotes" value={transferNotes} onChange={(e) => setTransferNotes(e.target.value)} />
+        </div>
+        {transferError && <p className="error-text">{transferError}</p>}
+        {transferNotice && <p className="muted">{transferNotice}</p>}
+        <button className="btn btn-primary" type="submit" disabled={transferring}>
+          {transferring ? "Transferring…" : "Transfer stock"}
         </button>
       </form>
 
