@@ -6,7 +6,10 @@ export default function TicketCard({ ticket }: { ticket: Ticket }) {
   return (
     <Link to={`/tickets/${ticket.id}`} className="card" style={{ display: "block", textDecoration: "none", color: "inherit" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div>
+        {/* minWidth: 0 overrides the flex item's default min-width: auto — without it, the
+            "Parts" line's white-space: nowrap makes this whole div (and the card) grow to
+            fit the unwrapped text instead of letting text-overflow: ellipsis truncate it. */}
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600 }}>
             #{ticket.id} — {ticket.location_name}
             {ticket.equipment_name ? ` · ${ticket.equipment_name}` : ""}
