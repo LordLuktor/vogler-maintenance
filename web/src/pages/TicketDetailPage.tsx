@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, getSession, Equipment, InventoryItem, ItemUsage, Location, Ticket } from "../api/client";
+import { api, getSession, Equipment, InventoryItem, ItemUsage, Location, Ticket, TicketPart } from "../api/client";
 import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
 
 const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"];
@@ -14,6 +14,11 @@ export default function TicketDetailPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [usageRows, setUsageRows] = useState<ItemUsage[]>([]);
   const [loggingUsage, setLoggingUsage] = useState(false);
+  const [partEdits, setPartEdits] = useState<Record<number, string>>({});
+  const [savingPartId, setSavingPartId] = useState<number | null>(null);
+  const [removingPartId, setRemovingPartId] = useState<number | null>(null);
+  const [partsError, setPartsError] = useState("");
+  const [partsNotice, setPartsNotice] = useState("");
   const [statusNotes, setStatusNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
@@ -140,11 +145,63 @@ export default function TicketDetailPage() {
   async function handleLogUsage() {
     if (!ticket || usageRows.length === 0) return;
     setLoggingUsage(true);
+    setPartsError("");
+    setPartsNotice("");
     try {
-      await api.updateTicketStatus(ticket.id, ticket.status, usageRows);
+      const updated = await api.updateTicketStatus(ticket.id, ticket.status, usageRows);
+      setTicket({ ...ticket, ...updated });
       setUsageRows([]);
+      setPartsNotice("Parts logged.");
+    } catch (err) {
+      // Previously this had no catch at all — a failure (e.g. an item not tracked at
+      // this ticket's location) silently did nothing, with no way to tell whether it
+      // had worked or not.
+      setPartsError(err instanceof Error ? err.message : "Couldn't log that usage.");
     } finally {
       setLoggingUsage(false);
+    }
+  }
+
+  async function handleSavePartQuantity(part: TicketPart) {
+    if (!ticket) return;
+    const raw = partEdits[part.id] ?? String(part.quantity);
+    const quantity = Number(raw);
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      setPartsError("Quantity must be a whole number of at least 1 — remove the part instead to take it off the ticket.");
+      return;
+    }
+    setPartsError("");
+    setPartsNotice("");
+    setSavingPartId(part.id);
+    try {
+      const parts = await api.updateTicketPart(ticket.id, part.id, quantity);
+      setTicket({ ...ticket, parts });
+      setPartEdits((prev) => {
+        const next = { ...prev };
+        delete next[part.id];
+        return next;
+      });
+      setPartsNotice("Updated.");
+    } catch (err) {
+      setPartsError(err instanceof Error ? err.message : "Couldn't update that quantity.");
+    } finally {
+      setSavingPartId(null);
+    }
+  }
+
+  async function handleRemovePart(part: TicketPart) {
+    if (!ticket) return;
+    if (!window.confirm(`Remove ${part.quantity} ${part.item_unit} of ${part.item_name} from this ticket? The quantity goes back into stock.`)) return;
+    setPartsError("");
+    setPartsNotice("");
+    setRemovingPartId(part.id);
+    try {
+      const parts = await api.deleteTicketPart(ticket.id, part.id);
+      setTicket({ ...ticket, parts });
+    } catch (err) {
+      setPartsError(err instanceof Error ? err.message : "Couldn't remove that part.");
+    } finally {
+      setRemovingPartId(null);
     }
   }
 
@@ -328,6 +385,60 @@ export default function TicketDetailPage() {
       {isAdmin && (
         <div className="card">
           <label style={{ fontWeight: 600, display: "block", marginBottom: 8 }}>Parts used</label>
+
+          {ticket.parts && ticket.parts.length > 0 ? (
+            <div style={{ marginBottom: 16 }}>
+              {ticket.parts.map((part) => {
+                const editValue = partEdits[part.id] ?? String(part.quantity);
+                const dirty = editValue !== String(part.quantity);
+                return (
+                  <div
+                    key={part.id}
+                    style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e2e4e9", flexWrap: "wrap" }}
+                  >
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <strong>{part.item_name}</strong>
+                      {part.notes && <span className="muted"> — {part.notes}</span>}
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      value={editValue}
+                      style={{ width: 70 }}
+                      onChange={(e) => setPartEdits((prev) => ({ ...prev, [part.id]: e.target.value }))}
+                    />
+                    <span className="muted">{part.item_unit}</span>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ background: "#e2e4e9" }}
+                      onClick={() => handleSavePartQuantity(part)}
+                      disabled={!dirty || savingPartId === part.id}
+                    >
+                      {savingPartId === part.id ? "Saving…" : "Save"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => handleRemovePart(part)}
+                      disabled={removingPartId === part.id}
+                    >
+                      {removingPartId === part.id ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted" style={{ marginBottom: 16 }}>No parts logged yet.</p>
+          )}
+
+          {partsError && <p className="error-text">{partsError}</p>}
+          {partsNotice && <p className="muted">{partsNotice}</p>}
+
+          <label className="muted" style={{ fontWeight: 600, display: "block", margin: "8px 0" }}>
+            Log more parts
+          </label>
           {usageRows.map((row, i) => (
             <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
               <select

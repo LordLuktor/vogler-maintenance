@@ -104,6 +104,18 @@ export interface Ticket {
   source: "web" | "sms" | "pm";
   created_at: string;
   photos?: { id: number; url: string; mime_type: string }[];
+  parts?: TicketPart[];
+}
+
+export interface TicketPart {
+  id: number;
+  item_id: number;
+  item_name: string;
+  item_unit: string;
+  quantity: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PmSchedule {
@@ -277,6 +289,15 @@ export const api = {
   ) => request<Ticket>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
   deleteTicket: (id: number) => request<void>(`/tickets/${id}`, { method: "DELETE" }),
+
+  updateTicketPart: (ticketId: number, partId: number, quantity: number) =>
+    request<TicketPart[]>(`/tickets/${ticketId}/parts/${partId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ quantity })
+    }),
+
+  deleteTicketPart: (ticketId: number, partId: number) =>
+    request<TicketPart[]>(`/tickets/${ticketId}/parts/${partId}`, { method: "DELETE" }),
 
   getPmSchedules: () => request<PmSchedule[]>("/pm-schedules"),
 

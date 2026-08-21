@@ -8,8 +8,8 @@ import { notifyNewTicket, notifyTicketStatusChange } from "../services/notify";
 import { ISSUE_TYPES } from "../issueTypes";
 import { completeSchedule } from "../services/pmSchedules";
 import { getAllowedLocationIds } from "../services/permissions";
-import { adjustStock } from "../services/inventory";
 import { notifyLowStock } from "../services/inventoryAlerts";
+import { listTicketParts, logTicketPart, removeTicketPart, updateTicketPartQuantity } from "../services/ticketParts";
 
 export const ticketsRouter = Router();
 
@@ -175,7 +175,8 @@ ticketsRouter.get("/:id", async (req: AuthedRequest, res: Response) => {
   }
 
   const photos = await db("ticket_photos").where({ ticket_id: ticketId }).select("id", "url", "mime_type");
-  res.json({ ...ticket, photos });
+  const parts = await listTicketParts(ticketId);
+  res.json({ ...ticket, photos, parts });
 });
 
 ticketsRouter.patch(
@@ -247,16 +248,34 @@ ticketsRouter.patch(
     }
 
     if (itemsUsed.length > 0) {
+      // Fail the whole batch up front if any item isn't tracked at this ticket's location,
+      // rather than partially applying some and silently no-op'ing others — logTicketPart()
+      // returning null for an untracked item must never happen mid-loop, since ticket_parts
+      // has to stay an exact mirror of what actually got decremented.
       const location = await db("locations").where({ id: ticket.location_id }).first("name");
+
+      const itemIds = [...new Set(itemsUsed.map((u) => u.item_id))];
+      const trackedStock = await db("inventory_stock")
+        .where({ location_id: ticket.location_id })
+        .whereIn("item_id", itemIds);
+      const trackedItemIds = new Set(trackedStock.map((s) => s.item_id));
+      const untracked = itemIds.filter((id) => !trackedItemIds.has(id));
+      if (untracked.length > 0) {
+        const names = await db("inventory_items").whereIn("id", untracked).pluck("name");
+        res.status(400).json({
+          error: `Not tracked at ${location?.name || `location #${ticket.location_id}`}: ${names.join(", ")}. Add it to inventory there first.`
+        });
+        return;
+      }
+
       for (const usage of itemsUsed) {
-        const result = await adjustStock({
+        const result = await logTicketPart({
+          ticketId: ticket.id,
           itemId: usage.item_id,
           locationId: ticket.location_id,
-          delta: -usage.quantity,
-          reason: "ticket_use",
-          ticketId: ticket.id,
-          userId: req.user!.id,
-          notes: usage.notes || null
+          quantity: usage.quantity,
+          notes: usage.notes || null,
+          userId: req.user!.id
         });
         if (result?.crossedBelowThreshold) {
           const item = await db("inventory_items").where({ id: usage.item_id }).first("name", "unit");
@@ -264,16 +283,103 @@ ticketsRouter.patch(
             itemName: item?.name || `item #${usage.item_id}`,
             unit: item?.unit || "each",
             locationName: location?.name || `location #${ticket.location_id}`,
-            quantityAfter: result.stock.quantity_on_hand,
-            threshold: result.stock.reorder_threshold
+            quantityAfter: result.quantityOnHand,
+            threshold: result.reorderThreshold
           });
         }
       }
     }
 
-    res.json(ticket);
+    const parts = await listTicketParts(ticket.id);
+    res.json({ ...ticket, parts });
   }
 );
+
+// Correct a previously-logged quantity in place (e.g. "1" typo'd instead of "6") without
+// creating a second usage entry for the same item — location/ticket scoping matches /:id/status
+// above since this is the same admin-gated inventory-logging action, just editing instead of adding.
+ticketsRouter.patch(
+  "/:id/parts/:partId",
+  requireAdmin,
+  body("quantity").isInt({ min: 1 }).toInt(),
+  async (req: AuthedRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: "Invalid input", details: errors.array() });
+      return;
+    }
+
+    const ticketId = Number(req.params.id);
+    const partId = Number(req.params.partId);
+    if (!Number.isInteger(ticketId) || !Number.isInteger(partId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const allowedIds = await getAllowedLocationIds(req.user!);
+    const ticket = await db("tickets").where({ id: ticketId }).first("id", "location_id");
+    if (!ticket || (allowedIds !== null && !allowedIds.includes(ticket.location_id))) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const part = await db("ticket_parts").where({ id: partId }).first();
+    if (!part || part.ticket_id !== ticketId) {
+      res.status(404).json({ error: "Part not found on this ticket" });
+      return;
+    }
+
+    const result = await updateTicketPartQuantity(partId, req.body.quantity, req.user!.id);
+    if (!result.ok) {
+      res.status(404).json({ error: "Part not found on this ticket" });
+      return;
+    }
+
+    if (result.crossedBelowThreshold) {
+      const item = await db("inventory_items").where({ id: part.item_id }).first("name", "unit");
+      const location = await db("locations").where({ id: part.location_id }).first("name");
+      await notifyLowStock({
+        itemName: item?.name || `item #${part.item_id}`,
+        unit: item?.unit || "each",
+        locationName: location?.name || `location #${part.location_id}`,
+        quantityAfter: result.quantityOnHand,
+        threshold: result.reorderThreshold
+      });
+    }
+
+    res.json(await listTicketParts(ticketId));
+  }
+);
+
+ticketsRouter.delete("/:id/parts/:partId", requireAdmin, async (req: AuthedRequest, res: Response) => {
+  const ticketId = Number(req.params.id);
+  const partId = Number(req.params.partId);
+  if (!Number.isInteger(ticketId) || !Number.isInteger(partId)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const allowedIds = await getAllowedLocationIds(req.user!);
+  const ticket = await db("tickets").where({ id: ticketId }).first("id", "location_id");
+  if (!ticket || (allowedIds !== null && !allowedIds.includes(ticket.location_id))) {
+    res.status(404).json({ error: "Ticket not found" });
+    return;
+  }
+
+  const part = await db("ticket_parts").where({ id: partId }).first();
+  if (!part || part.ticket_id !== ticketId) {
+    res.status(404).json({ error: "Part not found on this ticket" });
+    return;
+  }
+
+  const result = await removeTicketPart(partId, req.user!.id);
+  if (!result.ok) {
+    res.status(404).json({ error: "Part not found on this ticket" });
+    return;
+  }
+
+  res.json(await listTicketParts(ticketId));
+});
 
 // Edit and delete are for fixing duplicate/erroneous tickets, not routine workflow
 // (status changes go through /:id/status above) — admin-only.
