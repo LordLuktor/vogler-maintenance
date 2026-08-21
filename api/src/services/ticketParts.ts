@@ -21,6 +21,68 @@ export function listTicketParts(ticketId: number) {
     .orderBy("tp.created_at", "asc");
 }
 
+/**
+ * Same shape as listTicketParts() but across many tickets in one query — for the ticket
+ * list/dashboard, which needs a "what's been used" summary per card without an N+1 query
+ * per ticket shown. Includes ticket_id so the caller can group rows back by ticket.
+ */
+export async function listPartsForTickets(ticketIds: number[]) {
+  if (ticketIds.length === 0) return [];
+  return db("ticket_parts as tp")
+    .join("inventory_items as i", "i.id", "tp.item_id")
+    .join("locations as l", "l.id", "tp.location_id")
+    .select(
+      "tp.ticket_id",
+      "tp.id",
+      "tp.item_id",
+      "i.name as item_name",
+      "i.unit as item_unit",
+      "tp.location_id",
+      "l.name as location_name",
+      "tp.quantity",
+      "tp.notes",
+      "tp.created_at",
+      "tp.updated_at"
+    )
+    .whereIn("tp.ticket_id", ticketIds)
+    .orderBy("tp.created_at", "asc");
+}
+
+/**
+ * Where should this item's usage on a ticket be decremented from? There's no manual
+ * source picker — a truck's stock is meant to be usable on any job without the tech
+ * having to think about it, while stock at another store is NOT meant to be usable
+ * elsewhere without an explicit transfer first (that's what the separate inventory
+ * Transfer feature is for — this must never become a silent back door around it).
+ *
+ * Resolution order: (1) the ticket's own location, if this item is tracked there —
+ * the common case, unchanged from before trucks existed; (2) whichever accessible
+ * vehicle-type location (truck) carries this item, preferring the one with the most
+ * on hand if more than one truck happens to stock it; (3) not resolvable — caller
+ * should tell the user to transfer stock in first.
+ */
+export async function resolvePartSourceLocation(
+  itemId: number,
+  ticketLocationId: number,
+  allowedLocationIds: number[] | null
+): Promise<number | null> {
+  const atTicketLocation = await db("inventory_stock")
+    .where({ item_id: itemId, location_id: ticketLocationId })
+    .first("id");
+  if (atTicketLocation) return ticketLocationId;
+
+  let truckStockQuery = db("inventory_stock as s")
+    .join("locations as l", "l.id", "s.location_id")
+    .where("l.type", "vehicle")
+    .where("s.item_id", itemId)
+    .orderBy("s.quantity_on_hand", "desc");
+  if (allowedLocationIds !== null) {
+    truckStockQuery = truckStockQuery.whereIn("s.location_id", allowedLocationIds);
+  }
+  const truckStock = await truckStockQuery.first("s.location_id");
+  return truckStock ? truckStock.location_id : null;
+}
+
 export interface LogPartParams {
   ticketId: number;
   itemId: number;

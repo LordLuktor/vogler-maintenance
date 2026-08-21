@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, getSession, Equipment, InventoryItem, ItemUsage, Location, Ticket, TicketPart } from "../api/client";
+import { api, getSession, Equipment, InventoryItem, InventoryStock, ItemUsage, Location, Ticket, TicketPart } from "../api/client";
 import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
 
 const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"];
@@ -12,6 +12,7 @@ export default function TicketDetailPage() {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [updating, setUpdating] = useState(false);
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [stock, setStock] = useState<InventoryStock[]>([]);
   const [usageRows, setUsageRows] = useState<ItemUsage[]>([]);
   const [loggingUsage, setLoggingUsage] = useState(false);
   const [partEdits, setPartEdits] = useState<Record<number, string>>({});
@@ -46,12 +47,29 @@ export default function TicketDetailPage() {
   }, [isAdmin]);
 
   useEffect(() => {
-    // include_vehicles: a tech needs to be able to pull a part from their truck's own
-    // stock, not just wherever the ticket happens to be — trucks are hidden from the
-    // default list (nobody reports a maintenance issue "at" a truck) but need to show up
-    // here as a valid source location.
+    // Used to work out which catalog items are actually usable on this ticket (tracked
+    // at its location or on a truck) before the tech even opens the picker, rather than
+    // letting them pick something and finding out from a 400 that it isn't.
+    if (isAdmin) api.getInventoryStock().then(setStock).catch(() => setStock([]));
+  }, [isAdmin]);
+
+  useEffect(() => {
+    // include_vehicles: trucks are hidden from the default location list (nobody reports
+    // a maintenance issue "at" a truck) but still needed here to tell which locations
+    // count as a truck when filtering the parts picker below.
     if (isAdmin) api.getLocations(true).then(setLocations).catch(() => setLocations([]));
   }, [isAdmin]);
+
+  // A part is usable on this ticket without an explicit transfer if it's tracked either
+  // at the ticket's own location or on any truck — stock at another store is deliberately
+  // excluded here (that requires a real Transfer first), matching what the backend enforces.
+  const vehicleLocationIds = new Set(locations.filter((l) => l.type === "vehicle").map((l) => l.id));
+  const usableItemIds = new Set(
+    stock
+      .filter((s) => (ticket ? s.location_id === ticket.location_id : false) || vehicleLocationIds.has(s.location_id))
+      .map((s) => s.item_id)
+  );
+  const usableItems = items.filter((i) => usableItemIds.has(i.id));
 
   useEffect(() => {
     if (!editLocationId) {
@@ -135,7 +153,7 @@ export default function TicketDetailPage() {
   }
 
   function addUsageRow() {
-    setUsageRows((prev) => [...prev, { item_id: items[0]?.id || 0, quantity: 1, location_id: ticket?.location_id }]);
+    setUsageRows((prev) => [...prev, { item_id: usableItems[0]?.id || 0, quantity: 1 }]);
   }
 
   function updateUsageRow(index: number, patch: Partial<ItemUsage>) {
@@ -448,15 +466,17 @@ export default function TicketDetailPage() {
           </label>
           {usageRows.map((row, i) => (
             <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #e2e4e9" }}>
-              {/* Item name is its own full-width row — some catalog names (part SKUs
-                  especially) are too long for a select squeezed into a horizontal row,
-                  which forced side-scrolling to read the selected value. */}
+              {/* Only items tracked at this location or on a truck are listed — anything
+                  else needs a real Transfer first, so it's left off rather than offered
+                  and then rejected. Its own full-width row: some catalog names (part
+                  SKUs especially) are too long for a select squeezed into a horizontal
+                  row, which forced side-scrolling to read the selected value. */}
               <select
                 value={row.item_id}
                 onChange={(e) => updateUsageRow(i, { item_id: Number(e.target.value) })}
                 style={{ width: "100%", marginBottom: 8 }}
               >
-                {items.map((item) => (
+                {usableItems.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -470,17 +490,6 @@ export default function TicketDetailPage() {
                   style={{ width: 70 }}
                   onChange={(e) => updateUsageRow(i, { quantity: Number(e.target.value) })}
                 />
-                <select
-                  value={row.location_id ?? ticket.location_id}
-                  onChange={(e) => updateUsageRow(i, { location_id: Number(e.target.value) })}
-                  style={{ flex: 1, minWidth: 160 }}
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.type === "vehicle" ? `🚚 ${loc.name}` : loc.name}
-                    </option>
-                  ))}
-                </select>
                 <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => removeUsageRow(i)}>
                   Remove
                 </button>
@@ -488,7 +497,7 @@ export default function TicketDetailPage() {
             </div>
           ))}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={addUsageRow} disabled={items.length === 0}>
+            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={addUsageRow} disabled={usableItems.length === 0}>
               + Add item
             </button>
             {usageRows.length > 0 && (
@@ -497,7 +506,13 @@ export default function TicketDetailPage() {
               </button>
             )}
           </div>
-          {items.length === 0 && <p className="muted" style={{ marginTop: 8 }}>No inventory items in the catalog yet.</p>}
+          {usableItems.length === 0 && (
+            <p className="muted" style={{ marginTop: 8 }}>
+              {items.length === 0
+                ? "No inventory items in the catalog yet."
+                : "Nothing tracked at this location or on a truck yet — transfer stock here first."}
+            </p>
+          )}
         </div>
       )}
     </div>

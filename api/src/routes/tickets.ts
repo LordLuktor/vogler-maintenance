@@ -9,7 +9,14 @@ import { ISSUE_TYPES } from "../issueTypes";
 import { completeSchedule } from "../services/pmSchedules";
 import { getAllowedLocationIds } from "../services/permissions";
 import { notifyLowStock } from "../services/inventoryAlerts";
-import { listTicketParts, logTicketPart, removeTicketPart, updateTicketPartQuantity } from "../services/ticketParts";
+import {
+  listPartsForTickets,
+  listTicketParts,
+  logTicketPart,
+  removeTicketPart,
+  resolvePartSourceLocation,
+  updateTicketPartQuantity
+} from "../services/ticketParts";
 
 export const ticketsRouter = Router();
 
@@ -148,7 +155,16 @@ ticketsRouter.get(
     }
 
     const tickets = await ticketsQuery;
-    res.json(tickets);
+
+    const allParts = await listPartsForTickets(tickets.map((t) => t.id));
+    const partsByTicket = new Map<number, typeof allParts>();
+    for (const part of allParts) {
+      const list = partsByTicket.get(part.ticket_id) ?? [];
+      list.push(part);
+      partsByTicket.set(part.ticket_id, list);
+    }
+
+    res.json(tickets.map((t) => ({ ...t, parts: partsByTicket.get(t.id) ?? [] })));
   }
 );
 
@@ -187,10 +203,6 @@ ticketsRouter.patch(
   body("items_used.*.item_id").isInt().toInt(),
   body("items_used.*.quantity").isInt({ min: 1 }).toInt(),
   body("items_used.*.notes").optional().isString().trim().isLength({ max: 500 }),
-  // Source location for this item — defaults to the ticket's own location when omitted,
-  // but a tech can pull a part from anywhere they have access to (their truck's stock,
-  // most commonly), not just wherever the ticket happens to be.
-  body("items_used.*.location_id").optional().isInt().toInt(),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -198,7 +210,7 @@ ticketsRouter.patch(
       return;
     }
 
-    const itemsUsed: { item_id: number; quantity: number; notes?: string; location_id?: number }[] = req.body.items_used || [];
+    const itemsUsed: { item_id: number; quantity: number; notes?: string }[] = req.body.items_used || [];
     if (itemsUsed.length > 0 && !req.user!.is_admin) {
       res.status(403).json({ error: "Admin access required to log inventory usage" });
       return;
@@ -252,38 +264,30 @@ ticketsRouter.patch(
     }
 
     if (itemsUsed.length > 0) {
-      const resolvedUsage = itemsUsed.map((u) => ({ ...u, locationId: u.location_id || ticket.location_id }));
-
-      // A scoped (non-all_locations) user can only draw from a location they're actually
-      // assigned to — otherwise picking an arbitrary location_id here would let them read/
-      // adjust stock anywhere, bypassing the same location scoping that gates the ticket
-      // itself.
-      if (allowedIds !== null) {
-        const outOfScope = resolvedUsage.filter((u) => !allowedIds.includes(u.locationId));
-        if (outOfScope.length > 0) {
-          res.status(403).json({ error: "You don't have access to one of the selected source locations." });
-          return;
+      // No manual source picker — a truck's stock is usable on any job automatically,
+      // but stock at another store is NOT usable elsewhere without an explicit transfer
+      // first (see resolvePartSourceLocation for the full reasoning). Resolve every
+      // item's source before applying anything, so a batch either fully succeeds or
+      // fails with a clear list of what's missing rather than partially applying.
+      const resolved: { item_id: number; quantity: number; notes?: string; locationId: number }[] = [];
+      const unresolvedItemIds: number[] = [];
+      for (const usage of itemsUsed) {
+        const locationId = await resolvePartSourceLocation(usage.item_id, ticket.location_id, allowedIds);
+        if (locationId === null) {
+          unresolvedItemIds.push(usage.item_id);
+        } else {
+          resolved.push({ ...usage, locationId });
         }
       }
-
-      // Fail the whole batch up front if any (item, source location) pair isn't tracked,
-      // rather than partially applying some and silently no-op'ing others — logTicketPart()
-      // returning null for an untracked pair must never happen mid-loop, since ticket_parts
-      // has to stay an exact mirror of what actually got decremented.
-      const usedLocationIds = [...new Set(resolvedUsage.map((u) => u.locationId))];
-      const trackedStock = await db("inventory_stock").whereIn("location_id", usedLocationIds);
-      const trackedPairs = new Set(trackedStock.map((s) => `${s.item_id}:${s.location_id}`));
-      const untracked = resolvedUsage.filter((u) => !trackedPairs.has(`${u.item_id}:${u.locationId}`));
-      if (untracked.length > 0) {
-        const untrackedItemIds = [...new Set(untracked.map((u) => u.item_id))];
-        const names = await db("inventory_items").whereIn("id", untrackedItemIds).pluck("name");
+      if (unresolvedItemIds.length > 0) {
+        const names = await db("inventory_items").whereIn("id", [...new Set(unresolvedItemIds)]).pluck("name");
         res.status(400).json({
-          error: `Not tracked at the selected source location: ${names.join(", ")}. Add it to inventory there first.`
+          error: `Not tracked at this location or on your truck: ${names.join(", ")}. Transfer stock here first.`
         });
         return;
       }
 
-      for (const usage of resolvedUsage) {
+      for (const usage of resolved) {
         const result = await logTicketPart({
           ticketId: ticket.id,
           itemId: usage.item_id,
