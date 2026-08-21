@@ -112,6 +112,8 @@ export interface TicketPart {
   item_id: number;
   item_name: string;
   item_unit: string;
+  location_id: number;
+  location_name: string;
   quantity: number;
   notes: string | null;
   created_at: string;
@@ -191,6 +193,8 @@ export interface ItemUsage {
   item_id: number;
   quantity: number;
   notes?: string;
+  // Source location to draw stock from — omit to default to the ticket's own location.
+  location_id?: number;
 }
 
 export interface Asset {

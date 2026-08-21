@@ -4,7 +4,19 @@ import { adjustStock } from "./inventory";
 export function listTicketParts(ticketId: number) {
   return db("ticket_parts as tp")
     .join("inventory_items as i", "i.id", "tp.item_id")
-    .select("tp.id", "tp.item_id", "i.name as item_name", "i.unit as item_unit", "tp.quantity", "tp.notes", "tp.created_at", "tp.updated_at")
+    .join("locations as l", "l.id", "tp.location_id")
+    .select(
+      "tp.id",
+      "tp.item_id",
+      "i.name as item_name",
+      "i.unit as item_unit",
+      "tp.location_id",
+      "l.name as location_name",
+      "tp.quantity",
+      "tp.notes",
+      "tp.created_at",
+      "tp.updated_at"
+    )
     .where("tp.ticket_id", ticketId)
     .orderBy("tp.created_at", "asc");
 }
@@ -25,16 +37,18 @@ export interface LogPartResult {
 }
 
 /**
- * Adds to (or, if this item is already on the ticket, increases) the ticket's parts
- * list, and decrements stock by the same amount through the normal adjustStock
- * ledger — same "restock/6 at once" quantity field as everywhere else, not six
- * separate clicks. One row per (ticket, item): using the same part again later just
- * bumps the existing row's quantity rather than creating a second line for it.
+ * Adds to (or, if this exact item+source-location is already on the ticket, increases)
+ * the ticket's parts list, and decrements stock by the same amount through the normal
+ * adjustStock ledger — same "restock/6 at once" quantity field as everywhere else, not
+ * six separate clicks. One row per (ticket, item, location): a tech can log the same
+ * part twice from two different sources (e.g. some from the store, more from their
+ * truck) without one overwriting the other's location — but using it again from the
+ * *same* source just bumps that row's quantity rather than creating a duplicate line.
  *
- * Returns null if the item isn't tracked at this location yet — caller decides how to
- * surface that (previously this silently no-op'd the stock decrement while still
- * reporting success, which is exactly the kind of drift a ticket_parts row must not
- * be allowed to have relative to the real stock ledger).
+ * Returns null if the item isn't tracked at the given location yet — caller decides how
+ * to surface that (previously this silently no-op'd the stock decrement while still
+ * reporting success, which is exactly the kind of drift a ticket_parts row must not be
+ * allowed to have relative to the real stock ledger).
  */
 export async function logTicketPart(params: LogPartParams): Promise<LogPartResult | null> {
   const result = await adjustStock({
@@ -48,7 +62,9 @@ export async function logTicketPart(params: LogPartParams): Promise<LogPartResul
   });
   if (!result) return null;
 
-  const existing = await db("ticket_parts").where({ ticket_id: params.ticketId, item_id: params.itemId }).first();
+  const existing = await db("ticket_parts")
+    .where({ ticket_id: params.ticketId, item_id: params.itemId, location_id: params.locationId })
+    .first();
   if (existing) {
     await db("ticket_parts")
       .where({ id: existing.id })

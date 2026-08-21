@@ -46,7 +46,11 @@ export default function TicketDetailPage() {
   }, [isAdmin]);
 
   useEffect(() => {
-    if (isAdmin) api.getLocations().then(setLocations).catch(() => setLocations([]));
+    // include_vehicles: a tech needs to be able to pull a part from their truck's own
+    // stock, not just wherever the ticket happens to be — trucks are hidden from the
+    // default list (nobody reports a maintenance issue "at" a truck) but need to show up
+    // here as a valid source location.
+    if (isAdmin) api.getLocations(true).then(setLocations).catch(() => setLocations([]));
   }, [isAdmin]);
 
   useEffect(() => {
@@ -131,7 +135,7 @@ export default function TicketDetailPage() {
   }
 
   function addUsageRow() {
-    setUsageRows((prev) => [...prev, { item_id: items[0]?.id || 0, quantity: 1 }]);
+    setUsageRows((prev) => [...prev, { item_id: items[0]?.id || 0, quantity: 1, location_id: ticket?.location_id }]);
   }
 
   function updateUsageRow(index: number, patch: Partial<ItemUsage>) {
@@ -398,6 +402,9 @@ export default function TicketDetailPage() {
                   >
                     <div style={{ flex: 1, minWidth: 140 }}>
                       <strong>{part.item_name}</strong>
+                      {part.location_id !== ticket.location_id && (
+                        <span className="muted"> — from {part.location_name}</span>
+                      )}
                       {part.notes && <span className="muted"> — {part.notes}</span>}
                     </div>
                     <input
@@ -440,10 +447,14 @@ export default function TicketDetailPage() {
             Log more parts
           </label>
           {usageRows.map((row, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #e2e4e9" }}>
+              {/* Item name is its own full-width row — some catalog names (part SKUs
+                  especially) are too long for a select squeezed into a horizontal row,
+                  which forced side-scrolling to read the selected value. */}
               <select
                 value={row.item_id}
                 onChange={(e) => updateUsageRow(i, { item_id: Number(e.target.value) })}
+                style={{ width: "100%", marginBottom: 8 }}
               >
                 {items.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -451,16 +462,29 @@ export default function TicketDetailPage() {
                   </option>
                 ))}
               </select>
-              <input
-                type="number"
-                min={1}
-                value={row.quantity}
-                style={{ width: 70 }}
-                onChange={(e) => updateUsageRow(i, { quantity: Number(e.target.value) })}
-              />
-              <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => removeUsageRow(i)}>
-                Remove
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="number"
+                  min={1}
+                  value={row.quantity}
+                  style={{ width: 70 }}
+                  onChange={(e) => updateUsageRow(i, { quantity: Number(e.target.value) })}
+                />
+                <select
+                  value={row.location_id ?? ticket.location_id}
+                  onChange={(e) => updateUsageRow(i, { location_id: Number(e.target.value) })}
+                  style={{ flex: 1, minWidth: 160 }}
+                >
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.type === "vehicle" ? `🚚 ${loc.name}` : loc.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => removeUsageRow(i)}>
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
           <div style={{ display: "flex", gap: 8 }}>

@@ -187,6 +187,10 @@ ticketsRouter.patch(
   body("items_used.*.item_id").isInt().toInt(),
   body("items_used.*.quantity").isInt({ min: 1 }).toInt(),
   body("items_used.*.notes").optional().isString().trim().isLength({ max: 500 }),
+  // Source location for this item — defaults to the ticket's own location when omitted,
+  // but a tech can pull a part from anywhere they have access to (their truck's stock,
+  // most commonly), not just wherever the ticket happens to be.
+  body("items_used.*.location_id").optional().isInt().toInt(),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -194,7 +198,7 @@ ticketsRouter.patch(
       return;
     }
 
-    const itemsUsed: { item_id: number; quantity: number; notes?: string }[] = req.body.items_used || [];
+    const itemsUsed: { item_id: number; quantity: number; notes?: string; location_id?: number }[] = req.body.items_used || [];
     if (itemsUsed.length > 0 && !req.user!.is_admin) {
       res.status(403).json({ error: "Admin access required to log inventory usage" });
       return;
@@ -248,41 +252,53 @@ ticketsRouter.patch(
     }
 
     if (itemsUsed.length > 0) {
-      // Fail the whole batch up front if any item isn't tracked at this ticket's location,
-      // rather than partially applying some and silently no-op'ing others — logTicketPart()
-      // returning null for an untracked item must never happen mid-loop, since ticket_parts
-      // has to stay an exact mirror of what actually got decremented.
-      const location = await db("locations").where({ id: ticket.location_id }).first("name");
+      const resolvedUsage = itemsUsed.map((u) => ({ ...u, locationId: u.location_id || ticket.location_id }));
 
-      const itemIds = [...new Set(itemsUsed.map((u) => u.item_id))];
-      const trackedStock = await db("inventory_stock")
-        .where({ location_id: ticket.location_id })
-        .whereIn("item_id", itemIds);
-      const trackedItemIds = new Set(trackedStock.map((s) => s.item_id));
-      const untracked = itemIds.filter((id) => !trackedItemIds.has(id));
+      // A scoped (non-all_locations) user can only draw from a location they're actually
+      // assigned to — otherwise picking an arbitrary location_id here would let them read/
+      // adjust stock anywhere, bypassing the same location scoping that gates the ticket
+      // itself.
+      if (allowedIds !== null) {
+        const outOfScope = resolvedUsage.filter((u) => !allowedIds.includes(u.locationId));
+        if (outOfScope.length > 0) {
+          res.status(403).json({ error: "You don't have access to one of the selected source locations." });
+          return;
+        }
+      }
+
+      // Fail the whole batch up front if any (item, source location) pair isn't tracked,
+      // rather than partially applying some and silently no-op'ing others — logTicketPart()
+      // returning null for an untracked pair must never happen mid-loop, since ticket_parts
+      // has to stay an exact mirror of what actually got decremented.
+      const usedLocationIds = [...new Set(resolvedUsage.map((u) => u.locationId))];
+      const trackedStock = await db("inventory_stock").whereIn("location_id", usedLocationIds);
+      const trackedPairs = new Set(trackedStock.map((s) => `${s.item_id}:${s.location_id}`));
+      const untracked = resolvedUsage.filter((u) => !trackedPairs.has(`${u.item_id}:${u.locationId}`));
       if (untracked.length > 0) {
-        const names = await db("inventory_items").whereIn("id", untracked).pluck("name");
+        const untrackedItemIds = [...new Set(untracked.map((u) => u.item_id))];
+        const names = await db("inventory_items").whereIn("id", untrackedItemIds).pluck("name");
         res.status(400).json({
-          error: `Not tracked at ${location?.name || `location #${ticket.location_id}`}: ${names.join(", ")}. Add it to inventory there first.`
+          error: `Not tracked at the selected source location: ${names.join(", ")}. Add it to inventory there first.`
         });
         return;
       }
 
-      for (const usage of itemsUsed) {
+      for (const usage of resolvedUsage) {
         const result = await logTicketPart({
           ticketId: ticket.id,
           itemId: usage.item_id,
-          locationId: ticket.location_id,
+          locationId: usage.locationId,
           quantity: usage.quantity,
           notes: usage.notes || null,
           userId: req.user!.id
         });
         if (result?.crossedBelowThreshold) {
           const item = await db("inventory_items").where({ id: usage.item_id }).first("name", "unit");
+          const sourceLocation = await db("locations").where({ id: usage.locationId }).first("name");
           await notifyLowStock({
             itemName: item?.name || `item #${usage.item_id}`,
             unit: item?.unit || "each",
-            locationName: location?.name || `location #${ticket.location_id}`,
+            locationName: sourceLocation?.name || `location #${usage.locationId}`,
             quantityAfter: result.quantityOnHand,
             threshold: result.reorderThreshold
           });
