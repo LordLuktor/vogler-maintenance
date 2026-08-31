@@ -166,6 +166,10 @@ export default function TicketDetailPage() {
 
   async function handleLogUsage() {
     if (!ticket || usageRows.length === 0) return;
+    if (usageRows.some((row) => !Number.isInteger(row.quantity) || row.quantity < 1)) {
+      setPartsError("Enter a quantity of at least 1 for every item before logging usage.");
+      return;
+    }
     setLoggingUsage(true);
     setPartsError("");
     setPartsNotice("");
@@ -486,7 +490,7 @@ export default function TicketDetailPage() {
                 <input
                   type="number"
                   min={1}
-                  value={row.quantity}
+                  value={row.quantity === 0 ? "" : row.quantity}
                   style={{ width: 70 }}
                   onChange={(e) => updateUsageRow(i, { quantity: Number(e.target.value) })}
                 />

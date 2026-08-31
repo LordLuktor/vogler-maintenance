@@ -73,6 +73,7 @@ export default function PmSchedulesPage() {
   }
 
   async function handleComplete(id: number) {
+    if (getUsageRows(id).some((row) => !Number.isInteger(row.quantity) || row.quantity < 1)) return;
     await api.completePmSchedule(id, usageByScheduleId[id]);
     setUsageByScheduleId((prev) => ({ ...prev, [id]: [] }));
     loadSchedules();
@@ -245,7 +246,7 @@ export default function PmSchedulesPage() {
                   <input
                     type="number"
                     min={1}
-                    value={row.quantity}
+                    value={row.quantity === 0 ? "" : row.quantity}
                     style={{ width: 70 }}
                     onChange={(e) => updateUsageRow(s.id, i, { quantity: Number(e.target.value) })}
                   />
@@ -267,7 +268,11 @@ export default function PmSchedulesPage() {
           )}
 
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" onClick={() => handleComplete(s.id)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleComplete(s.id)}
+              disabled={getUsageRows(s.id).some((row) => !Number.isInteger(row.quantity) || row.quantity < 1)}
+            >
               Mark complete
             </button>
             <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleToggleActive(s)}>
