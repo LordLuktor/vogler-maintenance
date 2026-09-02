@@ -33,7 +33,14 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 
-app.use("/uploads", express.static(UPLOAD_DIR));
+// Ticket/receipt photos are private-by-obscurity (unguessable UUID filenames), not
+// access-controlled — this header keeps a directly-linked file out of search results even
+// though robots.txt alone wouldn't (a disallowed URL can still get indexed if discovered
+// via an external link, just without its content).
+app.use("/uploads", (_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow");
+  next();
+}, express.static(UPLOAD_DIR));
 
 app.use("/api/auth", authRouter);
 app.use("/api/locations", locationsRouter);
