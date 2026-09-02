@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, getSession, Receipt } from "../api/client";
 import ReceiptFileCapture from "../components/ReceiptFileCapture";
 
@@ -79,9 +78,6 @@ export default function ReceiptsPage() {
     <div className="page">
       <div className="header">
         <h1>Receipts</h1>
-        <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-          Back
-        </Link>
       </div>
 
       <form className="card" onSubmit={handleSubmit}>
@@ -125,7 +121,7 @@ export default function ReceiptsPage() {
           {loadingReceipts && <p className="muted">Loading…</p>}
           {!loadingReceipts && receipts.length === 0 && <p className="muted">No receipts uploaded yet.</p>}
           {receipts.map((r) => (
-            <div key={r.id} style={{ borderTop: "1px solid #e2e4e9", padding: "10px 0" }}>
+            <div key={r.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <strong>{r.description}</strong>
@@ -140,8 +136,7 @@ export default function ReceiptsPage() {
                   <button
                     key={f.id}
                     type="button"
-                    className="btn"
-                    style={{ background: "#e2e4e9" }}
+                    className="btn btn-secondary"
                     onClick={() => handleViewFile(r.id, f.id)}
                     disabled={openingFileId === f.id}
                   >

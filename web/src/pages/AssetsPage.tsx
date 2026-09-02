@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, Asset, Location } from "../api/client";
 
 export default function AssetsPage() {
@@ -89,9 +88,6 @@ export default function AssetsPage() {
     <div className="page">
       <div className="header">
         <h1>Assets</h1>
-        <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-          Back
-        </Link>
       </div>
 
       <form className="card" onSubmit={handleSubmit}>
@@ -124,7 +120,7 @@ export default function AssetsPage() {
             {creating ? "Saving…" : editingAssetId ? "Save changes" : "Add asset"}
           </button>
           {editingAssetId && (
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={resetForm}>
+            <button type="button" className="btn btn-secondary" onClick={resetForm}>
               Cancel
             </button>
           )}
@@ -155,10 +151,10 @@ export default function AssetsPage() {
                 </option>
               ))}
             </select>
-            <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleMove(asset)}>
+            <button className="btn btn-secondary" onClick={() => handleMove(asset)}>
               Move
             </button>
-            <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => startEdit(asset)}>
+            <button className="btn btn-secondary" onClick={() => startEdit(asset)}>
               Edit
             </button>
             <button className="btn" style={{ background: "#fee2e2" }} onClick={() => handleDelete(asset)}>

@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { api, getToken, Location, Equipment } from "../api/client";
+import { useSearchParams } from "react-router-dom";
+import { api, Location, Equipment } from "../api/client";
 import { ISSUE_TYPES } from "../issueTypes";
 import PhotoCapture from "../components/PhotoCapture";
 
 export default function ReportPage() {
   const [searchParams] = useSearchParams();
   const preselectedLocation = searchParams.get("location");
-  const isLoggedIn = !!getToken();
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]);
@@ -77,16 +76,9 @@ export default function ReportPage() {
         <div className="card">
           <h1>Report submitted</h1>
           <p>Ticket #{ticketId} has been sent to maintenance. Thanks for flagging it!</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" onClick={() => window.location.reload()}>
-              Report another issue
-            </button>
-            {isLoggedIn && (
-              <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-                Back to Dashboard
-              </Link>
-            )}
-          </div>
+          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+            Report another issue
+          </button>
         </div>
       </div>
     );
@@ -95,12 +87,7 @@ export default function ReportPage() {
   return (
     <div className="page">
       <div className="header">
-        <h1>Report a Maintenance Issue</h1>
-        {isLoggedIn && (
-          <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-            Back to Dashboard
-          </Link>
-        )}
+        <h1>Report a maintenance issue</h1>
       </div>
       <form className="card" onSubmit={handleSubmit}>
         <div className="field">

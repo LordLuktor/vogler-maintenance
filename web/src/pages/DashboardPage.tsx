@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { api, clearToken, getSession, Location, Ticket } from "../api/client";
+import { Link } from "react-router-dom";
+import { api, Location, Ticket } from "../api/client";
 import TicketCard from "../components/TicketCard";
 import MultiSelectDropdown from "../components/MultiSelectDropdown";
 
@@ -14,8 +14,6 @@ const STATUS_OPTIONS = [
 ];
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
-  const isAdmin = getSession()?.is_admin ?? false;
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [status, setStatus] = useState("");
@@ -39,49 +37,13 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, [status, excludeStatuses, locationId]);
 
-  function handleLogout() {
-    clearToken();
-    navigate("/login");
-  }
-
   return (
     <div className="page">
       <div className="header">
-        <h1>Maintenance Dashboard</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link to="/report" className="btn btn-primary">
-            New Ticket
-          </Link>
-          <Link to="/pm-schedules" className="btn" style={{ background: "#e2e4e9" }}>
-            Preventative Maintenance Schedule
-          </Link>
-          <Link to="/receipts" className="btn" style={{ background: "#e2e4e9" }}>
-            Receipts
-          </Link>
-          {isAdmin && (
-            <Link to="/assets" className="btn" style={{ background: "#e2e4e9" }}>
-              Assets
-            </Link>
-          )}
-          {isAdmin && (
-            <Link to="/locations" className="btn" style={{ background: "#e2e4e9" }}>
-              Locations
-            </Link>
-          )}
-          {isAdmin && (
-            <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
-              Inventory
-            </Link>
-          )}
-          {isAdmin && (
-            <Link to="/users" className="btn" style={{ background: "#e2e4e9" }}>
-              Users
-            </Link>
-          )}
-          <button className="btn" style={{ background: "#e2e4e9" }} onClick={handleLogout}>
-            Log out
-          </button>
-        </div>
+        <h1>Tickets</h1>
+        <Link to="/report" className="btn btn-primary">
+          New Ticket
+        </Link>
       </div>
 
       <div className="filter-bar">

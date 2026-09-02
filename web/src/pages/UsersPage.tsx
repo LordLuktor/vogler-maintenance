@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, Location, User } from "../api/client";
 
 export default function UsersPage() {
@@ -113,14 +112,6 @@ export default function UsersPage() {
     <div className="page">
       <div className="header">
         <h1>Users</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
-            Inventory
-          </Link>
-          <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-            Back
-          </Link>
-        </div>
       </div>
 
       <form className="card" onSubmit={handleSubmit}>
@@ -154,7 +145,7 @@ export default function UsersPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Leave blank to email an invite link instead"
               />
-              <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={generatePassword}>
+              <button type="button" className="btn btn-secondary" onClick={generatePassword}>
                 Generate
               </button>
             </div>
@@ -214,7 +205,7 @@ export default function UsersPage() {
             {submitting ? "Saving…" : editingUserId ? "Save changes" : password ? "Create user" : "Send invite"}
           </button>
           {editingUserId && (
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={resetForm}>
+            <button type="button" className="btn btn-secondary" onClick={resetForm}>
               Cancel
             </button>
           )}
@@ -233,7 +224,7 @@ export default function UsersPage() {
             {u.all_locations ? "All locations" : u.locations.map((l) => l.name).join(", ") || "No locations assigned"}
           </p>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => startEdit(u)}>
+            <button className="btn btn-secondary" onClick={() => startEdit(u)}>
               Edit
             </button>
             <button className="btn" style={{ background: "#fee2e2" }} onClick={() => handleDelete(u.id)}>

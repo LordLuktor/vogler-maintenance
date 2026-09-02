@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, InventoryStock, LocationDetail, Ticket } from "../api/client";
 import TicketCard from "../components/TicketCard";
 
@@ -45,9 +44,6 @@ export default function LocationsPage() {
     <div className="page">
       <div className="header">
         <h1>Locations</h1>
-        <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-          Back
-        </Link>
       </div>
 
       <p className="muted" style={{ marginTop: 0 }}>

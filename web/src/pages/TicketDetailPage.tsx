@@ -242,17 +242,12 @@ export default function TicketDetailPage() {
   return (
     <div className="page">
       <div className="header">
-        <h1>Ticket #{ticket.id}</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {isAdmin && (
-            <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
-              Inventory
-            </Link>
-          )}
-          <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-            Back
-          </Link>
-        </div>
+        <h1>
+          Ticket <span className="id-mono">#{ticket.id}</span>
+        </h1>
+        <Link to="/dashboard" className="btn btn-secondary">
+          Back to tickets
+        </Link>
       </div>
 
       {editing ? (
@@ -321,7 +316,7 @@ export default function TicketDetailPage() {
             <button type="button" className="btn btn-primary" onClick={handleSaveEdit} disabled={saving}>
               {saving ? "Saving…" : "Save changes"}
             </button>
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => setEditing(false)} disabled={saving}>
+            <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)} disabled={saving}>
               Cancel
             </button>
           </div>
@@ -359,7 +354,7 @@ export default function TicketDetailPage() {
 
           {isAdmin && (
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={startEditing}>
+              <button type="button" className="btn btn-secondary" onClick={startEditing}>
                 Edit ticket
               </button>
               <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
@@ -399,8 +394,7 @@ export default function TicketDetailPage() {
         />
         <button
           type="button"
-          className="btn"
-          style={{ background: "#e2e4e9", marginTop: 8 }}
+          className="btn btn-secondary" style={{ marginTop: 8 }}
           onClick={handleSaveNotes}
           disabled={savingNotes || statusNotes === (ticket.status_notes || "")}
         >
@@ -420,7 +414,7 @@ export default function TicketDetailPage() {
                 return (
                   <div
                     key={part.id}
-                    style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid #e2e4e9", flexWrap: "wrap" }}
+                    style={{ display: "flex", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}
                   >
                     <div style={{ flex: 1, minWidth: 140 }}>
                       <strong>{part.item_name}</strong>
@@ -439,8 +433,7 @@ export default function TicketDetailPage() {
                     <span className="muted">{part.item_unit}</span>
                     <button
                       type="button"
-                      className="btn"
-                      style={{ background: "#e2e4e9" }}
+                      className="btn btn-secondary"
                       onClick={() => handleSavePartQuantity(part)}
                       disabled={!dirty || savingPartId === part.id}
                     >
@@ -469,7 +462,7 @@ export default function TicketDetailPage() {
             Log more parts
           </label>
           {usageRows.map((row, i) => (
-            <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #e2e4e9" }}>
+            <div key={i} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
               {/* Only items tracked at this location or on a truck are listed — anything
                   else needs a real Transfer first, so it's left off rather than offered
                   and then rejected. Its own full-width row: some catalog names (part
@@ -494,14 +487,14 @@ export default function TicketDetailPage() {
                   style={{ width: 70 }}
                   onChange={(e) => updateUsageRow(i, { quantity: Number(e.target.value) })}
                 />
-                <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => removeUsageRow(i)}>
+                <button type="button" className="btn btn-secondary" onClick={() => removeUsageRow(i)}>
                   Remove
                 </button>
               </div>
             </div>
           ))}
           <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={addUsageRow} disabled={usableItems.length === 0}>
+            <button type="button" className="btn btn-secondary" onClick={addUsageRow} disabled={usableItems.length === 0}>
               + Add item
             </button>
             {usageRows.length > 0 && (

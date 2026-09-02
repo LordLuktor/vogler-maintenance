@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, getSession, InventoryItem, ItemUsage, Location, Equipment, PmSchedule } from "../api/client";
 import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
 
@@ -113,16 +112,6 @@ export default function PmSchedulesPage() {
     <div className="page">
       <div className="header">
         <h1>Preventive Maintenance</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {isAdmin && (
-            <Link to="/inventory" className="btn" style={{ background: "#e2e4e9" }}>
-              Inventory
-            </Link>
-          )}
-          <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-            Back
-          </Link>
-        </div>
       </div>
 
       <form className="card" onSubmit={handleCreate}>
@@ -250,15 +239,14 @@ export default function PmSchedulesPage() {
                     style={{ width: 70 }}
                     onChange={(e) => updateUsageRow(s.id, i, { quantity: Number(e.target.value) })}
                   />
-                  <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => removeUsageRow(s.id, i)}>
+                  <button type="button" className="btn btn-secondary" onClick={() => removeUsageRow(s.id, i)}>
                     Remove
                   </button>
                 </div>
               ))}
               <button
                 type="button"
-                className="btn"
-                style={{ background: "#e2e4e9" }}
+                className="btn btn-secondary"
                 onClick={() => addUsageRow(s.id)}
                 disabled={inventoryItems.length === 0}
               >
@@ -275,7 +263,7 @@ export default function PmSchedulesPage() {
             >
               Mark complete
             </button>
-            <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleToggleActive(s)}>
+            <button className="btn btn-secondary" onClick={() => handleToggleActive(s)}>
               {s.active ? "Deactivate" : "Reactivate"}
             </button>
           </div>

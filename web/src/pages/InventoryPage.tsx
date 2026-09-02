@@ -1,5 +1,4 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { api, InventoryItem, InventoryStock, Location } from "../api/client";
 
 // Lazy-loaded so the barcode-scanning library only ships to admins who open Inventory,
@@ -283,9 +282,6 @@ export default function InventoryPage() {
     <div className="page">
       <div className="header">
         <h1>Inventory</h1>
-        <Link to="/dashboard" className="btn" style={{ background: "#e2e4e9" }}>
-          Back
-        </Link>
       </div>
 
       <form className="card" onSubmit={handleCreateItem}>
@@ -300,7 +296,7 @@ export default function InventoryPage() {
               placeholder="Scan or type"
               style={{ flex: 1 }}
             />
-            <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => setScanContext("newItem")}>
+            <button type="button" className="btn btn-secondary" onClick={() => setScanContext("newItem")}>
               Scan
             </button>
           </div>
@@ -345,7 +341,7 @@ export default function InventoryPage() {
                   onChange={(e) => setEditForm((prev) => ({ ...prev, barcode: e.target.value }))}
                   style={{ flex: 1 }}
                 />
-                <button type="button" className="btn" style={{ background: "#e2e4e9" }} onClick={() => setScanContext("editItem")}>
+                <button type="button" className="btn btn-secondary" onClick={() => setScanContext("editItem")}>
                   Scan
                 </button>
               </div>
@@ -388,8 +384,7 @@ export default function InventoryPage() {
                 {savingEdit ? "Saving…" : "Save"}
               </button>
               <button
-                className="btn"
-                style={{ background: "#e2e4e9" }}
+                className="btn btn-secondary"
                 onClick={() => {
                   setEditingItemId(null);
                   setError("");
@@ -409,10 +404,10 @@ export default function InventoryPage() {
             {item.barcode && <p className="muted" style={{ margin: "4px 0" }}>Barcode: {item.barcode}</p>}
             {item.notes && <p className="muted" style={{ margin: "4px 0" }}>{item.notes}</p>}
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => startEditItem(item)}>
+              <button className="btn btn-secondary" onClick={() => startEditItem(item)}>
                 Edit
               </button>
-              <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleArchiveToggle(item)}>
+              <button className="btn btn-secondary" onClick={() => handleArchiveToggle(item)}>
                 {item.active ? "Archive" : "Reactivate"}
               </button>
             </div>
@@ -435,8 +430,7 @@ export default function InventoryPage() {
             </select>
             <button
               type="button"
-              className="btn"
-              style={{ background: "#e2e4e9" }}
+              className="btn btn-secondary"
               onClick={() => {
                 setFindBarcodeMessage("");
                 setScanContext("findItem");
@@ -575,7 +569,7 @@ export default function InventoryPage() {
           const low = s.reorder_threshold > 0 && s.quantity_on_hand < s.reorder_threshold;
           const adj = getAdjustment(s.id);
           return (
-            <div key={s.id} style={{ borderTop: "1px solid #e2e4e9", padding: "10px 0" }}>
+            <div key={s.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <strong>{s.location_name}</strong>
@@ -613,7 +607,7 @@ export default function InventoryPage() {
                   <option value="restock">Restock</option>
                   <option value="manual_adjustment">Manual adjustment</option>
                 </select>
-                <button className="btn" style={{ background: "#e2e4e9" }} onClick={() => handleAdjust(s)}>
+                <button className="btn btn-secondary" onClick={() => handleAdjust(s)}>
                   Adjust
                 </button>
               </div>

@@ -32,7 +32,7 @@ export default function LoginPage() {
   return (
     <div className="page" style={{ maxWidth: 360, paddingTop: 80 }}>
       <div className="card">
-        <h1>Maintenance Dashboard</h1>
+        <h1>Sign in</h1>
         <form onSubmit={handleSubmit}>
           <div className="field">
             <label htmlFor="email">Email</label>

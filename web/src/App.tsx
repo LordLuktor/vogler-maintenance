@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getToken, getSession } from "./api/client";
+import TopNav from "./components/TopNav";
 import ReportPage from "./pages/ReportPage";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -25,6 +26,7 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <TopNav />
       <Routes>
         <Route path="/" element={<Navigate to="/report" replace />} />
         <Route path="/report" element={<ReportPage />} />

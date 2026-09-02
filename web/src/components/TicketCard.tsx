@@ -11,7 +11,7 @@ export default function TicketCard({ ticket }: { ticket: Ticket }) {
             fit the unwrapped text instead of letting text-overflow: ellipsis truncate it. */}
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 600 }}>
-            #{ticket.id} — {ticket.location_name}
+            <span className="id-mono">#{ticket.id}</span> — {ticket.location_name}
             {ticket.equipment_name ? ` · ${ticket.equipment_name}` : ""}
           </div>
           <p className="muted" style={{ margin: "6px 0" }}>{issueTypeLabel(ticket.issue_type)}</p>
