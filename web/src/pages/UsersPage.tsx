@@ -158,26 +158,26 @@ export default function UsersPage() {
         )}
 
         <div className="field">
-          <label>
-            <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} /> Can manage
-            users
+          <label className="check-row">
+            <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
+            Can manage users
           </label>
         </div>
 
         <div className="field">
-          <label>
-            <input type="checkbox" checked={allLocations} onChange={(e) => setAllLocations(e.target.checked)} /> Sees
-            all locations
+          <label className="check-row">
+            <input type="checkbox" checked={allLocations} onChange={(e) => setAllLocations(e.target.checked)} />
+            Sees all locations
           </label>
         </div>
 
         <div className="field">
-          <label>
+          <label className="check-row">
             <input
               type="checkbox"
               checked={canViewReceipts}
               onChange={(e) => setCanViewReceipts(e.target.checked)}
-            />{" "}
+            />
             Can view receipts
           </label>
         </div>
@@ -186,12 +186,12 @@ export default function UsersPage() {
           <div className="field">
             <label>Locations this user can see</label>
             {locations.map((loc) => (
-              <label key={loc.id} style={{ display: "block", fontWeight: 400 }}>
+              <label key={loc.id} className="check-row">
                 <input
                   type="checkbox"
                   checked={locationIds.includes(loc.id)}
                   onChange={() => toggleLocation(loc.id)}
-                />{" "}
+                />
                 {loc.name}
               </label>
             ))}
