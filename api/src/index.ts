@@ -1,9 +1,5 @@
 import "dotenv/config";
 import express from "express";
-// Must be imported right after express, before any routers are mounted — patches
-// Express 4's router so thrown/rejected errors in async handlers reach the error
-// middleware below instead of becoming unhandled rejections that crash the process.
-import "express-async-errors";
 import helmet from "helmet";
 import cors from "cors";
 import { authRouter } from "./routes/auth";
@@ -65,9 +61,9 @@ app.listen(port, () => console.log(`vogler-maintenance API listening on :${port}
 
 startPmScheduler();
 
-// Last-resort net: anything that slips past express-async-errors (e.g. a rejection from
-// outside the request lifecycle entirely) gets logged instead of taking the whole server
-// down — a single dropped DB connection shouldn't cost every other request in flight.
+// Last-resort net: anything Express's own async-rejection forwarding doesn't catch (e.g. a
+// rejection from outside the request lifecycle entirely) gets logged instead of taking the
+// whole server down — a single dropped DB connection shouldn't cost every other request in flight.
 process.on("unhandledRejection", (reason) => {
   console.error("[process] unhandled rejection:", reason);
 });
