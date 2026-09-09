@@ -213,16 +213,26 @@ export interface ReceiptFile {
   size_bytes: number;
 }
 
+export interface ReceiptItem {
+  id: number;
+  receipt_id: number;
+  description: string;
+  amount: string | null;
+  is_returned: boolean;
+  returned_at: string | null;
+  returned_by: number | null;
+  returned_by_name: string | null;
+}
+
 export interface Receipt {
   id: number;
   uploaded_by: number | null;
   uploaded_by_name: string | null;
   uploaded_by_email: string | null;
-  description: string;
-  amount: string | null;
   purchased_at: string;
   created_at: string;
   files: ReceiptFile[];
+  items: ReceiptItem[];
 }
 
 export const api = {
@@ -424,5 +434,11 @@ export const api = {
 
   getReceipts: () => request<Receipt[]>("/receipts"),
 
-  getReceiptFileBlob: (receiptId: number, fileId: number) => requestBlob(`/receipts/${receiptId}/files/${fileId}`)
+  getReceiptFileBlob: (receiptId: number, fileId: number) => requestBlob(`/receipts/${receiptId}/files/${fileId}`),
+
+  setReceiptItemReturned: (receiptId: number, itemId: number, isReturned: boolean) =>
+    request<ReceiptItem>(`/receipts/${receiptId}/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ is_returned: isReturned })
+    })
 };

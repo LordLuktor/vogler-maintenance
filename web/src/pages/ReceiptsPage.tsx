@@ -6,12 +6,20 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+interface DraftItem {
+  description: string;
+  amount: string;
+}
+
+function emptyItem(): DraftItem {
+  return { description: "", amount: "" };
+}
+
 export default function ReceiptsPage() {
   const session = getSession();
   const canViewReceipts = (session?.is_admin || session?.can_view_receipts) ?? false;
 
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [items, setItems] = useState<DraftItem[]>([emptyItem()]);
   const [purchasedAt, setPurchasedAt] = useState(todayIsoDate());
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -21,6 +29,7 @@ export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loadingReceipts, setLoadingReceipts] = useState(canViewReceipts);
   const [openingFileId, setOpeningFileId] = useState<number | null>(null);
+  const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!canViewReceipts) return;
@@ -30,26 +39,39 @@ export default function ReceiptsPage() {
       .finally(() => setLoadingReceipts(false));
   }, [canViewReceipts]);
 
+  function updateItem(index: number, field: keyof DraftItem, value: string) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  }
+
+  function removeItem(index: number) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
-    if (!description.trim() || files.length === 0) {
-      setError("Description and at least one receipt file are required.");
+    const cleanedItems = items
+      .map((item) => ({ description: item.description.trim(), amount: item.amount.trim() }))
+      .filter((item) => item.description.length > 0);
+
+    if (cleanedItems.length === 0 || files.length === 0) {
+      setError("At least one item and one receipt file are required.");
       return;
     }
 
     setSubmitting(true);
     try {
       const formData = new FormData();
-      formData.set("description", description.trim());
-      if (amount.trim()) formData.set("amount", amount.trim());
+      formData.set(
+        "items",
+        JSON.stringify(cleanedItems.map((item) => ({ description: item.description, amount: item.amount || undefined })))
+      );
       formData.set("purchased_at", purchasedAt);
       files.forEach((f) => formData.append("files", f));
 
       await api.createReceipt(formData);
-      setDescription("");
-      setAmount("");
+      setItems([emptyItem()]);
       setPurchasedAt(todayIsoDate());
       setFiles([]);
       setSubmitted(true);
@@ -74,6 +96,32 @@ export default function ReceiptsPage() {
     }
   }
 
+  async function handleToggleReturned(receiptId: number, itemId: number, isReturned: boolean) {
+    setTogglingItemId(itemId);
+    try {
+      await api.setReceiptItemReturned(receiptId, itemId, isReturned);
+      setReceipts((prev) =>
+        prev.map((r) =>
+          r.id !== receiptId
+            ? r
+            : {
+                ...r,
+                items: r.items.map((item) =>
+                  item.id !== itemId ? item : { ...item, is_returned: isReturned }
+                )
+              }
+        )
+      );
+      // Server sets returned_at/returned_by too, and re-fetching is the simplest way to
+      // pick those up without duplicating that logic on the client.
+      api.getReceipts().then(setReceipts);
+    } catch {
+      setError("Couldn't update that item.");
+    } finally {
+      setTogglingItemId(null);
+    }
+  }
+
   return (
     <div className="page">
       <div className="header">
@@ -82,27 +130,46 @@ export default function ReceiptsPage() {
 
       <form className="card" onSubmit={handleSubmit}>
         <h2 style={{ marginTop: 0 }}>Upload a receipt</h2>
-        <div className="field">
-          <label htmlFor="description">What was purchased</label>
-          <input
-            id="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. Oil filters, Parts Store 2"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="amount">Amount (optional — leave blank if the receipt doesn't show one)</label>
-          <input
-            id="amount"
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-          />
-        </div>
+
+        {items.map((item, index) => (
+          <div key={index} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
+            <div className="field" style={{ flex: 2, marginBottom: 0 }}>
+              <label htmlFor={`item-description-${index}`}>What was purchased</label>
+              <input
+                id={`item-description-${index}`}
+                value={item.description}
+                onChange={(e) => updateItem(index, "description", e.target.value)}
+                placeholder="e.g. Oil filters, Parts Store 2"
+              />
+            </div>
+            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+              <label htmlFor={`item-amount-${index}`}>Amount (optional)</label>
+              <input
+                id={`item-amount-${index}`}
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={item.amount}
+                onChange={(e) => updateItem(index, "amount", e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            {items.length > 1 && (
+              <button type="button" className="btn btn-secondary" onClick={() => removeItem(index)}>
+                Remove
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ marginBottom: 16 }}
+          onClick={() => setItems((prev) => [...prev, emptyItem()])}
+        >
+          + Add another item
+        </button>
+
         <div className="field">
           <label htmlFor="purchasedAt">Purchase date</label>
           <input id="purchasedAt" type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} />
@@ -122,15 +189,38 @@ export default function ReceiptsPage() {
           {!loadingReceipts && receipts.length === 0 && <p className="muted">No receipts uploaded yet.</p>}
           {receipts.map((r) => (
             <div key={r.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <strong>{r.description}</strong>
-                  <p className="muted" style={{ margin: "4px 0" }}>
-                    {new Date(r.purchased_at).toLocaleDateString()} · {r.uploaded_by_name || r.uploaded_by_email || "Unknown"}
-                  </p>
+              <p className="muted" style={{ margin: "0 0 6px" }}>
+                {new Date(r.purchased_at).toLocaleDateString()} · {r.uploaded_by_name || r.uploaded_by_email || "Unknown"}
+              </p>
+
+              {r.items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}
+                >
+                  <div>
+                    <span style={item.is_returned ? { textDecoration: "line-through" } : undefined}>
+                      {item.description}
+                    </span>{" "}
+                    <strong>{item.amount !== null ? `$${Number(item.amount).toFixed(2)}` : ""}</strong>
+                    {item.is_returned && (
+                      <span className="muted" style={{ marginLeft: 8 }}>
+                        Returned{item.returned_by_name ? ` by ${item.returned_by_name}` : ""}
+                        {item.returned_at ? ` on ${new Date(item.returned_at).toLocaleDateString()}` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={togglingItemId === item.id}
+                    onClick={() => handleToggleReturned(r.id, item.id, !item.is_returned)}
+                  >
+                    {togglingItemId === item.id ? "Saving…" : item.is_returned ? "Undo return" : "Mark returned"}
+                  </button>
                 </div>
-                <strong>{r.amount !== null ? `$${Number(r.amount).toFixed(2)}` : <span className="muted">No amount listed</span>}</strong>
-              </div>
+              ))}
+
               <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                 {r.files.map((f) => (
                   <button

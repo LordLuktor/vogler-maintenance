@@ -54,6 +54,7 @@ services:
       SMTP_PORT: "465"
       SMTP_USER: maintenance@steinmetz.ltd
       ALERT_EMAIL: steinmetz.scott@gmail.com
+      RECEIPTS_ALERT_EMAIL: jblessing@voglerford.com
     secrets:
       - vogler_db_password
       - vogler_redis_password

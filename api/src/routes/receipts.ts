@@ -1,13 +1,28 @@
-import { Router, Response } from "express";
+import { Router, Response, NextFunction } from "express";
 import path from "path";
 import { body, validationResult } from "express-validator";
 import { db } from "../db";
 import { requireAuth, requireReceiptsAccess, AuthedRequest } from "../middleware/auth";
 import { uploadReceiptFile, RECEIPTS_DIR } from "../services/receiptUpload";
+import { notifyNewReceipt, notifyReceiptItemReturned } from "../services/notify";
 
 export const receiptsRouter = Router();
 
 receiptsRouter.use(requireAuth);
+
+// Multer parses multipart text fields as plain strings, so the "items" field arrives as a
+// JSON-encoded string rather than an array — decode it here so the express-validator checks
+// below can validate it as one.
+function parseItemsField(req: AuthedRequest, res: Response, next: NextFunction): void {
+  if (typeof req.body.items === "string") {
+    try {
+      req.body.items = JSON.parse(req.body.items);
+    } catch {
+      req.body.items = undefined;
+    }
+  }
+  next();
+}
 
 // Any logged-in user can submit a receipt — viewing the archive requires admin or the
 // narrower can_view_receipts role (see the requireReceiptsAccess routes below), so
@@ -15,8 +30,10 @@ receiptsRouter.use(requireAuth);
 receiptsRouter.post(
   "/",
   uploadReceiptFile.array("files", 5),
-  body("description").isString().trim().isLength({ min: 1, max: 500 }),
-  body("amount").optional({ values: "falsy" }).isFloat({ gt: 0 }).toFloat(),
+  parseItemsField,
+  body("items").isArray({ min: 1 }),
+  body("items.*.description").isString().trim().isLength({ min: 1, max: 500 }),
+  body("items.*.amount").optional({ values: "falsy" }).isFloat({ gt: 0 }).toFloat(),
   body("purchased_at").isISO8601(),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
@@ -31,14 +48,22 @@ receiptsRouter.post(
       return;
     }
 
+    const items: { description: string; amount?: number }[] = req.body.items;
+
     const [receipt] = await db("receipts")
       .insert({
         uploaded_by: req.user!.id,
-        description: req.body.description,
-        amount: req.body.amount ?? null,
         purchased_at: req.body.purchased_at
       })
       .returning("*");
+
+    await db("receipt_items").insert(
+      items.map((item) => ({
+        receipt_id: receipt.id,
+        description: item.description,
+        amount: item.amount ?? null
+      }))
+    );
 
     await db("receipt_files").insert(
       files.map((file) => ({
@@ -49,6 +74,8 @@ receiptsRouter.post(
         size_bytes: file.size
       }))
     );
+
+    await notifyNewReceipt({ id: receipt.id, uploaded_by: req.user!.id, items, file_count: files.length });
 
     res.status(201).json({ id: receipt.id });
   }
@@ -68,7 +95,24 @@ receiptsRouter.get("/", requireReceiptsAccess, async (_req: AuthedRequest, res: 
     filesByReceipt.set(file.receipt_id, list);
   }
 
-  res.json(receipts.map((r) => ({ ...r, files: filesByReceipt.get(r.id) || [] })));
+  const items = await db("receipt_items as i")
+    .leftJoin("users as u", "u.id", "i.returned_by")
+    .select("i.*", "u.name as returned_by_name")
+    .orderBy("i.id", "asc");
+  const itemsByReceipt = new Map<number, typeof items>();
+  for (const item of items) {
+    const list = itemsByReceipt.get(item.receipt_id) || [];
+    list.push(item);
+    itemsByReceipt.set(item.receipt_id, list);
+  }
+
+  res.json(
+    receipts.map((r) => ({
+      ...r,
+      files: filesByReceipt.get(r.id) || [],
+      items: itemsByReceipt.get(r.id) || []
+    }))
+  );
 });
 
 receiptsRouter.get("/:id/files/:fileId", requireReceiptsAccess, async (req: AuthedRequest, res: Response) => {
@@ -93,3 +137,56 @@ receiptsRouter.get("/:id/files/:fileId", requireReceiptsAccess, async (req: Auth
     if (err && !res.headersSent) res.status(404).json({ error: "File not found" });
   });
 });
+
+// Marking/unmarking is gated behind the same access as browsing the archive — returns are
+// tracked by whoever reviews receipts, not necessarily the original uploader.
+receiptsRouter.patch(
+  "/:id/items/:itemId",
+  requireReceiptsAccess,
+  body("is_returned").isBoolean().toBoolean(),
+  async (req: AuthedRequest, res: Response) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ error: "Invalid input", details: errors.array() });
+      return;
+    }
+
+    const receiptId = Number(req.params.id);
+    const itemId = Number(req.params.itemId);
+    if (!Number.isInteger(receiptId) || !Number.isInteger(itemId)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+
+    const item = await db("receipt_items").where({ id: itemId, receipt_id: receiptId }).first();
+    if (!item) {
+      res.status(404).json({ error: "Item not found" });
+      return;
+    }
+
+    const isReturned = req.body.is_returned as boolean;
+
+    const [updated] = await db("receipt_items")
+      .where({ id: itemId })
+      .update({
+        is_returned: isReturned,
+        returned_at: isReturned ? db.fn.now() : null,
+        returned_by: isReturned ? req.user!.id : null
+      })
+      .returning("*");
+
+    // Only fires on the false -> true transition, so re-saving an already-returned item
+    // (or unmarking one) never sends a duplicate email.
+    if (isReturned && !item.is_returned) {
+      await notifyReceiptItemReturned({
+        receiptId,
+        itemId,
+        description: item.description,
+        amount: item.amount,
+        returnedBy: req.user!.id
+      });
+    }
+
+    res.json(updated);
+  }
+);
