@@ -39,3 +39,17 @@ export const uploadReceiptFile = multer({
     cb(null, true);
   }
 });
+
+// Kept in memory, not written to RECEIPTS_DIR — a scan is a preview read on a file that may
+// never actually get submitted as a receipt, so it shouldn't leave anything on disk.
+export const uploadReceiptFileForScan = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_MIME_TYPES[file.mimetype]) {
+      cb(new Error("Unsupported file type"));
+      return;
+    }
+    cb(null, true);
+  }
+});

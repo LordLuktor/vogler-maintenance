@@ -1,14 +1,48 @@
 import { Router, Response, NextFunction } from "express";
 import path from "path";
+import rateLimit from "express-rate-limit";
 import { body, validationResult } from "express-validator";
 import { db } from "../db";
 import { requireAuth, requireReceiptsAccess, AuthedRequest } from "../middleware/auth";
-import { uploadReceiptFile, RECEIPTS_DIR } from "../services/receiptUpload";
+import { uploadReceiptFile, uploadReceiptFileForScan, RECEIPTS_DIR } from "../services/receiptUpload";
 import { notifyNewReceipt, notifyReceiptItemReturned } from "../services/notify";
+import { scanReceiptItems, UnscannableFileError } from "../services/receiptScan";
 
 export const receiptsRouter = Router();
 
 receiptsRouter.use(requireAuth);
+
+// Each call costs real money (a Claude API request) — cap it well below anything a person
+// filling out a form would hit, so a stuck retry loop can't run up the bill unnoticed.
+const scanLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Best-effort convenience, not a source of truth: reads a just-selected file (before the
+// receipt is even submitted) and returns candidate line items for the form to prefill.
+// Never blocks manual entry — any failure just means an empty prefill.
+receiptsRouter.post("/scan", scanLimiter, uploadReceiptFileForScan.single("file"), async (req: AuthedRequest, res: Response) => {
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "No file provided" });
+    return;
+  }
+
+  try {
+    const items = await scanReceiptItems(file.buffer, file.mimetype);
+    res.json({ items });
+  } catch (err) {
+    if (err instanceof UnscannableFileError) {
+      res.json({ items: [] });
+      return;
+    }
+    console.error("[receipts] scan failed:", err);
+    res.status(502).json({ error: "Couldn't read that receipt automatically" });
+  }
+});
 
 // Multer parses multipart text fields as plain strings, so the "items" field arrives as a
 // JSON-encoded string rather than an array — decode it here so the express-validator checks

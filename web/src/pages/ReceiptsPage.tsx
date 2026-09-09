@@ -30,6 +30,8 @@ export default function ReceiptsPage() {
   const [loadingReceipts, setLoadingReceipts] = useState(canViewReceipts);
   const [openingFileId, setOpeningFileId] = useState<number | null>(null);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState("");
 
   useEffect(() => {
     if (!canViewReceipts) return;
@@ -41,6 +43,28 @@ export default function ReceiptsPage() {
 
   function updateItem(index: number, field: keyof DraftItem, value: string) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  }
+
+  // Reads the first selected photo/PDF for candidate line items and prefills the form —
+  // always editable afterward, and any failure just leaves manual entry as-is.
+  async function handleFilesSelected(newFiles: File[]) {
+    setFiles(newFiles);
+    setScanNote("");
+    if (newFiles.length === 0) return;
+
+    setScanning(true);
+    try {
+      const { items: scanned } = await api.scanReceipt(newFiles[0]);
+      if (scanned.length > 0) {
+        setItems(scanned.map((item) => ({ description: item.description, amount: item.amount != null ? String(item.amount) : "" })));
+      } else {
+        setScanNote("Couldn't find any line items on that photo — enter them manually below.");
+      }
+    } catch {
+      setScanNote("Couldn't scan that receipt automatically — enter items manually below.");
+    } finally {
+      setScanning(false);
+    }
   }
 
   function removeItem(index: number) {
@@ -74,6 +98,7 @@ export default function ReceiptsPage() {
       setItems([emptyItem()]);
       setPurchasedAt(todayIsoDate());
       setFiles([]);
+      setScanNote("");
       setSubmitted(true);
       if (canViewReceipts) api.getReceipts().then(setReceipts);
     } catch (err) {
@@ -131,6 +156,14 @@ export default function ReceiptsPage() {
       <form className="card" onSubmit={handleSubmit}>
         <h2 style={{ marginTop: 0 }}>Upload a receipt</h2>
 
+        <div className="field">
+          <label htmlFor="purchasedAt">Purchase date</label>
+          <input id="purchasedAt" type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} />
+        </div>
+        <ReceiptFileCapture onChange={handleFilesSelected} />
+        {scanning && <p className="muted">Reading the receipt…</p>}
+        {scanNote && <p className="muted">{scanNote}</p>}
+
         {items.map((item, index) => (
           <div key={index} style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
             <div className="field" style={{ flex: 2, marginBottom: 0 }}>
@@ -170,11 +203,6 @@ export default function ReceiptsPage() {
           + Add another item
         </button>
 
-        <div className="field">
-          <label htmlFor="purchasedAt">Purchase date</label>
-          <input id="purchasedAt" type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} />
-        </div>
-        <ReceiptFileCapture onChange={setFiles} />
         {error && <p className="error-text">{error}</p>}
         <button className="btn btn-primary" type="submit" disabled={submitting}>
           {submitting ? "Uploading…" : "Upload receipt"}

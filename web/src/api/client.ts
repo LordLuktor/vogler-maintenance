@@ -440,5 +440,14 @@ export const api = {
     request<ReceiptItem>(`/receipts/${receiptId}/items/${itemId}`, {
       method: "PATCH",
       body: JSON.stringify({ is_returned: isReturned })
-    })
+    }),
+
+  scanReceipt: (file: File) => {
+    const formData = new FormData();
+    formData.set("file", file);
+    return request<{ items: { description: string; amount: number | null }[] }>("/receipts/scan", {
+      method: "POST",
+      body: formData
+    });
+  }
 };

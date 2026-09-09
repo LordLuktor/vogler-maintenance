@@ -61,6 +61,8 @@ services:
       - vogler_jwt_secret
       - source: vogler_smtp_password_v2
         target: vogler_smtp_password
+      - source: vogler_openai_api_key
+        target: vogler_openai_api_key
     volumes:
       - vogler_uploads:/app/uploads
       - vogler_receipts:/app/receipts
@@ -122,4 +124,6 @@ secrets:
   vogler_jwt_secret:
     external: true
   vogler_smtp_password_v2:
+    external: true
+  vogler_openai_api_key:
     external: true
