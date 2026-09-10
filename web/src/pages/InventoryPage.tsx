@@ -594,7 +594,9 @@ export default function InventoryPage() {
                   />
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="-?[0-9]*"
                   placeholder="+/- qty"
                   style={{ width: 90 }}
                   value={adj.delta}
