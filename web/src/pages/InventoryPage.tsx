@@ -36,7 +36,7 @@ export default function InventoryPage() {
   const [trackThreshold, setTrackThreshold] = useState("0");
   const [creatingStock, setCreatingStock] = useState(false);
 
-  const [adjustments, setAdjustments] = useState<Record<number, { delta: string; reason: "restock" | "manual_adjustment" }>>({});
+  const [adjustments, setAdjustments] = useState<Record<number, { delta: string; sign: 1 | -1; reason: "restock" | "manual_adjustment" }>>({});
 
   const [transferItemId, setTransferItemId] = useState("");
   const [transferFromLocationId, setTransferFromLocationId] = useState("");
@@ -258,23 +258,27 @@ export default function InventoryPage() {
   }
 
   function getAdjustment(stockId: number) {
-    return adjustments[stockId] || { delta: "", reason: "restock" as const };
+    return adjustments[stockId] || { delta: "", sign: 1 as 1 | -1, reason: "restock" as const };
   }
 
-  function setAdjustment(stockId: number, patch: Partial<{ delta: string; reason: "restock" | "manual_adjustment" }>) {
+  function setAdjustment(stockId: number, patch: Partial<{ delta: string; sign: 1 | -1; reason: "restock" | "manual_adjustment" }>) {
     setAdjustments((prev) => ({ ...prev, [stockId]: { ...getAdjustment(stockId), ...patch } }));
   }
 
+  // The quantity field only ever takes an unsigned number — sign comes from the toggle
+  // button instead. Mobile numeric keypads (inputMode="numeric") share one key between
+  // "-" and "." on most devices and don't reliably offer the dash, so a typed minus sign
+  // can't be depended on; a dedicated +/- toggle sidesteps the keyboard entirely.
   async function handleAdjust(s: InventoryStock) {
-    const { delta, reason } = getAdjustment(s.id);
-    const quantityDelta = Number(delta);
-    if (!Number.isInteger(quantityDelta) || quantityDelta === 0) {
-      setError("Enter a nonzero whole number to adjust by (negative to remove stock).");
+    const { delta, sign, reason } = getAdjustment(s.id);
+    const magnitude = Number(delta);
+    if (!Number.isInteger(magnitude) || magnitude <= 0) {
+      setError("Enter a whole number greater than 0 to adjust by.");
       return;
     }
     setError("");
-    await api.adjustInventoryStock(s.id, { quantity_delta: quantityDelta, reason });
-    setAdjustments((prev) => ({ ...prev, [s.id]: { delta: "", reason } }));
+    await api.adjustInventoryStock(s.id, { quantity_delta: magnitude * sign, reason });
+    setAdjustments((prev) => ({ ...prev, [s.id]: { delta: "", sign, reason } }));
     loadAll();
   }
 
@@ -593,12 +597,21 @@ export default function InventoryPage() {
                     onBlur={(e) => handleThresholdChange(s, e.target.value)}
                   />
                 </label>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  aria-label={adj.sign === 1 ? "Adding stock — tap to remove instead" : "Removing stock — tap to add instead"}
+                  onClick={() => setAdjustment(s.id, { sign: adj.sign === 1 ? -1 : 1 })}
+                  style={{ width: 40, fontWeight: 700 }}
+                >
+                  {adj.sign === 1 ? "+" : "−"}
+                </button>
                 <input
                   type="text"
                   inputMode="numeric"
-                  pattern="-?[0-9]*"
-                  placeholder="+/- qty"
-                  style={{ width: 90 }}
+                  pattern="[0-9]*"
+                  placeholder="qty"
+                  style={{ width: 70 }}
                   value={adj.delta}
                   onChange={(e) => setAdjustment(s.id, { delta: e.target.value })}
                 />
