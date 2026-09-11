@@ -25,8 +25,17 @@ const SYSTEM_PROMPT =
   "You read photos and scans of purchase receipts from an auto dealership/parts group's " +
   "maintenance staff. Extract each distinct purchased line item with its price. Skip " +
   "subtotal, tax, discount, and total lines — only individual purchased items. If a price " +
-  "isn't legible, use null for that item's amount rather than guessing. If the image isn't " +
+  "isn't legible, use null for that item's amount rather than guessing. Fuel/gas pump " +
+  "receipts print the per-gallon price with 3 decimal places (e.g. $3.459/gal); round that " +
+  "to 2 decimal places (e.g. $3.46) rather than copying the third digit — this rounding " +
+  "applies only to fuel per-gallon prices, not to other receipt amounts. If the image isn't " +
   "a receipt or nothing is legible, return an empty items array.";
+
+// Matches the pump per-gallon price on fuel receipts (e.g. "Unleaded @ $3.459/gal"), which is
+// the only line item type printed with 3 decimal places. Other commercial amounts (bulk unit
+// pricing, fractional-cent parts pricing) are left exactly as extracted — rounding those would
+// lose precision that matters for commercial reporting.
+const FUEL_ITEM_PATTERN = /\b(fuel|gas(?:oline)?|unleaded|diesel|gallon|gal)\b/i;
 
 const ITEMS_SCHEMA = {
   type: "object",
@@ -90,5 +99,15 @@ export async function scanReceiptItems(buffer: Buffer, mimeType: string): Promis
   if (!raw) return [];
 
   const parsed = JSON.parse(raw) as { items: ScannedItem[] };
-  return parsed.items.filter((item) => item.description && item.description.trim().length > 0);
+  return parsed.items
+    .filter((item) => item.description && item.description.trim().length > 0)
+    .map((item) => ({
+      ...item,
+      // Belt-and-suspenders for the fuel-specific instruction above: only round when the
+      // description looks like a fuel line, so non-fuel amounts keep their exact extracted value.
+      amount:
+        item.amount !== null && FUEL_ITEM_PATTERN.test(item.description)
+          ? Math.round(item.amount * 100) / 100
+          : item.amount
+    }));
 }
