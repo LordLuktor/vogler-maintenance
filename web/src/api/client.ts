@@ -103,6 +103,7 @@ export interface Ticket {
   priority: "low" | "normal" | "high" | "urgent";
   source: "web" | "sms" | "pm";
   created_at: string;
+  resolved_at: string | null;
   photos?: { id: number; url: string; mime_type: string }[];
   parts?: TicketPart[];
 }
@@ -297,6 +298,8 @@ export const api = {
       issue_type: string;
       description: string;
       priority: Ticket["priority"];
+      created_at: string;
+      resolved_at: string | null;
     }>
   ) => request<Ticket>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 

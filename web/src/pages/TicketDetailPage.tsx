@@ -5,6 +5,15 @@ import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
 
 const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"];
 
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in *local* time — Date's own
+// ISO getters are UTC, so the offset has to be subtracted out by hand first.
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 export default function TicketDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -31,6 +40,8 @@ export default function TicketDetailPage() {
   const [editIssueType, setEditIssueType] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState<Ticket["priority"]>("normal");
+  const [editCreatedAt, setEditCreatedAt] = useState("");
+  const [editResolvedAt, setEditResolvedAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
@@ -86,6 +97,8 @@ export default function TicketDetailPage() {
     setEditIssueType(ticket.issue_type);
     setEditDescription(ticket.description);
     setEditPriority(ticket.priority);
+    setEditCreatedAt(toDatetimeLocalValue(ticket.created_at));
+    setEditResolvedAt(toDatetimeLocalValue(ticket.resolved_at));
     setEditError("");
     setEditing(true);
   }
@@ -96,6 +109,10 @@ export default function TicketDetailPage() {
       setEditError("Please add a note describing the issue.");
       return;
     }
+    if (!editCreatedAt) {
+      setEditError("Reported date is required.");
+      return;
+    }
     setSaving(true);
     setEditError("");
     try {
@@ -104,7 +121,9 @@ export default function TicketDetailPage() {
         equipment_id: editEquipmentId ? Number(editEquipmentId) : null,
         issue_type: editIssueType,
         description: editDescription.trim(),
-        priority: editPriority
+        priority: editPriority,
+        created_at: new Date(editCreatedAt).toISOString(),
+        resolved_at: editResolvedAt ? new Date(editResolvedAt).toISOString() : null
       });
       setTicket({ ...ticket, ...updated });
       setEditing(false);
@@ -310,6 +329,28 @@ export default function TicketDetailPage() {
             </select>
           </div>
 
+          <div className="field">
+            <label htmlFor="editCreatedAt">Reported on</label>
+            <input
+              id="editCreatedAt"
+              type="datetime-local"
+              value={editCreatedAt}
+              onChange={(e) => setEditCreatedAt(e.target.value)}
+            />
+          </div>
+
+          {ticket.resolved_at && (
+            <div className="field">
+              <label htmlFor="editResolvedAt">Resolved on</label>
+              <input
+                id="editResolvedAt"
+                type="datetime-local"
+                value={editResolvedAt}
+                onChange={(e) => setEditResolvedAt(e.target.value)}
+              />
+            </div>
+          )}
+
           {editError && <p className="error-text">{editError}</p>}
 
           <div style={{ display: "flex", gap: 8 }}>
@@ -332,6 +373,9 @@ export default function TicketDetailPage() {
           <div style={{ display: "flex", gap: 8, margin: "12px 0" }}>
             <span className={`pill pill-priority-${ticket.priority}`}>{ticket.priority}</span>
             <span className="muted">Reported via {ticket.source} on {new Date(ticket.created_at).toLocaleString()}</span>
+            {ticket.resolved_at && (
+              <span className="muted">Resolved on {new Date(ticket.resolved_at).toLocaleString()}</span>
+            )}
           </div>
           {ticket.reporter_name && (
             <p className="muted" style={{ margin: "0 0 8px" }}>Reported by {ticket.reporter_name}</p>

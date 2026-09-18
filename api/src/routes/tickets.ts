@@ -411,6 +411,8 @@ ticketsRouter.patch(
   body("issue_type").optional().isIn(ISSUE_TYPES),
   body("description").optional().isString().trim().isLength({ max: 2000 }),
   body("priority").optional().isIn(["low", "normal", "high", "urgent"]),
+  body("created_at").optional().isISO8601().withMessage("Invalid reported date"),
+  body("resolved_at").optional({ values: "null" }).isISO8601().withMessage("Invalid resolved date"),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -441,7 +443,7 @@ ticketsRouter.patch(
     }
 
     const update: Record<string, unknown> = {};
-    for (const field of ["location_id", "equipment_id", "issue_type", "priority"] as const) {
+    for (const field of ["location_id", "equipment_id", "issue_type", "priority", "created_at", "resolved_at"] as const) {
       if (req.body[field] !== undefined) update[field] = req.body[field];
     }
     if (req.body.description !== undefined) update.description = req.body.description;
