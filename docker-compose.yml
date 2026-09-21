@@ -53,7 +53,7 @@ services:
       SMTP_HOST: smtp.purelymail.com
       SMTP_PORT: "465"
       SMTP_USER: maintenance@steinmetz.ltd
-      ALERT_EMAIL: steinmetz.scott@gmail.com
+      ALERT_EMAIL: scott@steinmetz.ltd
       RECEIPTS_ALERT_EMAIL: jblessing@voglerford.com
     secrets:
       - vogler_db_password
