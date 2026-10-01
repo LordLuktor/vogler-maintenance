@@ -231,6 +231,9 @@ export interface Receipt {
   uploaded_by_name: string | null;
   uploaded_by_email: string | null;
   purchased_at: string;
+  reference_number: string | null;
+  location_id: number | null;
+  location_name: string | null;
   created_at: string;
   files: ReceiptFile[];
   items: ReceiptItem[];

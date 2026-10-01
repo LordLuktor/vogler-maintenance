@@ -77,6 +77,8 @@ interface NewReceipt {
   uploaded_by: number;
   items: { description: string; amount?: number }[];
   file_count: number;
+  reference_number: string | null;
+  location_name: string | null;
 }
 
 function formatAmount(amount: number | string | null | undefined): string {
@@ -89,9 +91,17 @@ export async function notifyNewReceipt(receipt: NewReceipt): Promise<void> {
 
   const subject = `New receipt uploaded — ${uploaderName}`;
   const itemLines = receipt.items.map((item) => `- ${item.description} (${formatAmount(item.amount)})`).join("\n");
+  const trackingLines = [
+    receipt.reference_number ? `PO / ticket #: ${receipt.reference_number}` : null,
+    receipt.location_name ? `Location used: ${receipt.location_name}` : null
+  ]
+    .filter(Boolean)
+    .join("\n");
   const text = `${uploaderName} uploaded a receipt with ${receipt.items.length} item${
     receipt.items.length === 1 ? "" : "s"
-  } and ${receipt.file_count} attached file${receipt.file_count === 1 ? "" : "s"}:\n\n${itemLines}\n\nView it: ${
+  } and ${receipt.file_count} attached file${receipt.file_count === 1 ? "" : "s"}:\n\n${
+    trackingLines ? `${trackingLines}\n\n` : ""
+  }${itemLines}\n\nView it: ${
     process.env.PUBLIC_APP_URL || "http://localhost:5173"
   }/receipts`;
 

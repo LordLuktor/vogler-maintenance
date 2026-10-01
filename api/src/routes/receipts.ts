@@ -69,6 +69,8 @@ receiptsRouter.post(
   body("items.*.description").isString().trim().isLength({ min: 1, max: 500 }),
   body("items.*.amount").optional({ values: "falsy" }).isFloat({ gt: 0 }).toFloat(),
   body("purchased_at").isISO8601(),
+  body("reference_number").optional({ values: "falsy" }).isString().trim().isLength({ max: 100 }),
+  body("location_id").optional({ values: "falsy" }).isInt({ gt: 0 }).toInt(),
   async (req: AuthedRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -83,11 +85,25 @@ receiptsRouter.post(
     }
 
     const items: { description: string; amount?: number }[] = req.body.items;
+    const referenceNumber: string | null = req.body.reference_number || null;
+    const locationId: number | null = req.body.location_id || null;
+
+    let locationName: string | null = null;
+    if (locationId !== null) {
+      const location = await db("locations").where({ id: locationId }).first("name");
+      if (!location) {
+        res.status(400).json({ error: "Unknown location" });
+        return;
+      }
+      locationName = location.name;
+    }
 
     const [receipt] = await db("receipts")
       .insert({
         uploaded_by: req.user!.id,
-        purchased_at: req.body.purchased_at
+        purchased_at: req.body.purchased_at,
+        reference_number: referenceNumber,
+        location_id: locationId
       })
       .returning("*");
 
@@ -109,7 +125,14 @@ receiptsRouter.post(
       }))
     );
 
-    await notifyNewReceipt({ id: receipt.id, uploaded_by: req.user!.id, items, file_count: files.length });
+    await notifyNewReceipt({
+      id: receipt.id,
+      uploaded_by: req.user!.id,
+      items,
+      file_count: files.length,
+      reference_number: referenceNumber,
+      location_name: locationName
+    });
 
     res.status(201).json({ id: receipt.id });
   }
@@ -118,7 +141,8 @@ receiptsRouter.post(
 receiptsRouter.get("/", requireReceiptsAccess, async (_req: AuthedRequest, res: Response) => {
   const receipts = await db("receipts as r")
     .leftJoin("users as u", "u.id", "r.uploaded_by")
-    .select("r.*", "u.name as uploaded_by_name", "u.email as uploaded_by_email")
+    .leftJoin("locations as l", "l.id", "r.location_id")
+    .select("r.*", "u.name as uploaded_by_name", "u.email as uploaded_by_email", "l.name as location_name")
     .orderBy("r.purchased_at", "desc");
 
   const files = await db("receipt_files").select("id", "receipt_id", "original_filename", "mime_type", "size_bytes");

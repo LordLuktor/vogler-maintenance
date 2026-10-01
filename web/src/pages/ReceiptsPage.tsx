@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, getSession, Receipt } from "../api/client";
+import { useEffect, useRef, useState } from "react";
+import { api, getSession, Location, Receipt } from "../api/client";
 import ReceiptFileCapture from "../components/ReceiptFileCapture";
+import { issueTypeLabel } from "../issueTypes";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -21,6 +22,11 @@ export default function ReceiptsPage() {
 
   const [items, setItems] = useState<DraftItem[]>([emptyItem()]);
   const [purchasedAt, setPurchasedAt] = useState(todayIsoDate());
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [ticketNote, setTicketNote] = useState("");
+  const locationPickedByHand = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -32,6 +38,39 @@ export default function ReceiptsPage() {
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanNote, setScanNote] = useState("");
+
+  useEffect(() => {
+    api.getLocations(true).then(setLocations).catch(() => setLocations([]));
+  }, []);
+
+  // A reference that reads as a ticket number ("212", "#212", "ticket 212") is looked up
+  // and, if it's a real ticket this user can see, fills in that ticket's location. Anything
+  // else (e.g. "PO 4471") is left alone, and a location picked by hand is never overwritten.
+  useEffect(() => {
+    setTicketNote("");
+    const match = referenceNumber.trim().match(/^(?:ticket|tkt)?\s*#?\s*(\d{1,9})$/i);
+    if (!match) return;
+    const ticketId = Number(match[1]);
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .getTicket(ticketId)
+        .then((ticket) => {
+          if (cancelled) return;
+          setTicketNote(`Ticket #${ticket.id}: ${issueTypeLabel(ticket.issue_type)} at ${ticket.location_name}`);
+          if (!locationPickedByHand.current) setLocationId(String(ticket.location_id));
+        })
+        .catch(() => {
+          // Not a ticket (or not one this user can see) — treat it as a plain PO number.
+        });
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [referenceNumber]);
 
   useEffect(() => {
     if (!canViewReceipts) return;
@@ -92,11 +131,16 @@ export default function ReceiptsPage() {
         JSON.stringify(cleanedItems.map((item) => ({ description: item.description, amount: item.amount || undefined })))
       );
       formData.set("purchased_at", purchasedAt);
+      if (referenceNumber.trim()) formData.set("reference_number", referenceNumber.trim());
+      if (locationId) formData.set("location_id", locationId);
       files.forEach((f) => formData.append("files", f));
 
       await api.createReceipt(formData);
       setItems([emptyItem()]);
       setPurchasedAt(todayIsoDate());
+      setReferenceNumber("");
+      setLocationId("");
+      locationPickedByHand.current = false;
       setFiles([]);
       setScanNote("");
       setSubmitted(true);
@@ -160,6 +204,37 @@ export default function ReceiptsPage() {
           <label htmlFor="purchasedAt">Purchase date</label>
           <input id="purchasedAt" type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} />
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="field" style={{ flex: "1 1 180px" }}>
+            <label htmlFor="referenceNumber">PO / ticket # (optional)</label>
+            <input
+              id="referenceNumber"
+              value={referenceNumber}
+              maxLength={100}
+              onChange={(e) => setReferenceNumber(e.target.value)}
+              placeholder="e.g. PO 4471 or ticket 212"
+            />
+          </div>
+          <div className="field" style={{ flex: "1 1 180px" }}>
+            <label htmlFor="locationId">Location used (optional)</label>
+            <select
+              id="locationId"
+              value={locationId}
+              onChange={(e) => {
+                locationPickedByHand.current = e.target.value !== "";
+                setLocationId(e.target.value);
+              }}
+            >
+              <option value="">— Not specified —</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {ticketNote && <p className="muted">{ticketNote}</p>}
         <ReceiptFileCapture onChange={handleFilesSelected} />
         {scanning && <p className="muted">Reading the receipt…</p>}
         {scanNote && <p className="muted">{scanNote}</p>}
@@ -219,6 +294,8 @@ export default function ReceiptsPage() {
             <div key={r.id} style={{ borderTop: "1px solid var(--line)", padding: "10px 0" }}>
               <p className="muted" style={{ margin: "0 0 6px" }}>
                 {new Date(r.purchased_at).toLocaleDateString()} · {r.uploaded_by_name || r.uploaded_by_email || "Unknown"}
+                {r.reference_number ? ` · PO/Ticket ${r.reference_number}` : ""}
+                {r.location_name ? ` · ${r.location_name}` : ""}
               </p>
 
               {r.items.map((item) => (
