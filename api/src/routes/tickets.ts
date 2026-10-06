@@ -7,7 +7,7 @@ import { uploadPhoto } from "../services/upload";
 import { notifyNewTicket, notifyTicketStatusChange } from "../services/notify";
 import { ISSUE_TYPES } from "../issueTypes";
 import { completeSchedule } from "../services/pmSchedules";
-import { getAllowedLocationIds } from "../services/permissions";
+import { getAllowedLocationIds, getReadableLocationIds } from "../services/permissions";
 import { notifyLowStock } from "../services/inventoryAlerts";
 import {
   listPartsForTickets,
@@ -121,7 +121,7 @@ ticketsRouter.get(
       return;
     }
 
-    const allowedIds = await getAllowedLocationIds(req.user!);
+    const allowedIds = await getReadableLocationIds(req.user!);
 
     // Rank by actionability rather than plain recency: open work (new, then in_progress,
     // then acknowledged) surfaces above done tickets regardless of filters, and recency
@@ -184,15 +184,20 @@ ticketsRouter.get("/:id", async (req: AuthedRequest, res: Response) => {
 
   // 404 rather than 403 when out of scope — don't confirm a ticket exists at all to
   // someone who isn't allowed to see its location.
-  const allowedIds = await getAllowedLocationIds(req.user!);
-  if (!ticket || (allowedIds !== null && !allowedIds.includes(ticket.location_id))) {
+  const readableIds = await getReadableLocationIds(req.user!);
+  if (!ticket || (readableIds !== null && !readableIds.includes(ticket.location_id))) {
     res.status(404).json({ error: "Ticket not found" });
     return;
   }
 
+  // Tells the UI whether to show status/notes controls. Receipts reviewers can read tickets
+  // outside their assigned locations but not change them (the PATCH routes enforce this).
+  const editableIds = await getAllowedLocationIds(req.user!);
+  const canEdit = editableIds === null || editableIds.includes(ticket.location_id);
+
   const photos = await db("ticket_photos").where({ ticket_id: ticketId }).select("id", "url", "mime_type");
   const parts = await listTicketParts(ticketId);
-  res.json({ ...ticket, photos, parts });
+  res.json({ ...ticket, photos, parts, can_edit: canEdit });
 });
 
 ticketsRouter.patch(

@@ -410,41 +410,55 @@ export default function TicketDetailPage() {
         </div>
       )}
 
-      <div className="card">
-        <label htmlFor="status" style={{ fontWeight: 600, display: "block", marginBottom: 8 }}>
-          Status
-        </label>
-        <select
-          id="status"
-          value={ticket.status}
-          disabled={updating}
-          onChange={(e) => handleStatusChange(e.target.value as Ticket["status"])}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s.replace("_", " ")}
-            </option>
-          ))}
-        </select>
+      {ticket.can_edit === false ? (
+        <div className="card">
+          <p style={{ fontWeight: 600, marginBottom: 8 }}>Status</p>
+          <span className={`pill pill-${ticket.status}`}>{ticket.status.replace("_", " ")}</span>
+          {ticket.status_notes && (
+            <>
+              <p style={{ fontWeight: 600, margin: "16px 0 8px" }}>Notes</p>
+              <p style={{ whiteSpace: "pre-wrap" }}>{ticket.status_notes}</p>
+            </>
+          )}
+          <p className="muted" style={{ marginTop: 16 }}>View only — you can see this ticket for receipt lookups but can't change it.</p>
+        </div>
+      ) : (
+        <div className="card">
+          <label htmlFor="status" style={{ fontWeight: 600, display: "block", marginBottom: 8 }}>
+            Status
+          </label>
+          <select
+            id="status"
+            value={ticket.status}
+            disabled={updating}
+            onChange={(e) => handleStatusChange(e.target.value as Ticket["status"])}
+          >
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s.replace("_", " ")}
+              </option>
+            ))}
+          </select>
 
-        <label htmlFor="statusNotes" style={{ fontWeight: 600, display: "block", margin: "16px 0 8px" }}>
-          Notes {ticket.status === "rejected" ? "(why was this rejected?)" : "(optional)"}
-        </label>
-        <textarea
-          id="statusNotes"
-          value={statusNotes}
-          onChange={(e) => setStatusNotes(e.target.value)}
-          placeholder="e.g. Duplicate of ticket #42, or: not a maintenance issue"
-        />
-        <button
-          type="button"
-          className="btn btn-secondary" style={{ marginTop: 8 }}
-          onClick={handleSaveNotes}
-          disabled={savingNotes || statusNotes === (ticket.status_notes || "")}
-        >
-          {savingNotes ? "Saving…" : "Save notes"}
-        </button>
-      </div>
+          <label htmlFor="statusNotes" style={{ fontWeight: 600, display: "block", margin: "16px 0 8px" }}>
+            Notes {ticket.status === "rejected" ? "(why was this rejected?)" : "(optional)"}
+          </label>
+          <textarea
+            id="statusNotes"
+            value={statusNotes}
+            onChange={(e) => setStatusNotes(e.target.value)}
+            placeholder="e.g. Duplicate of ticket #42, or: not a maintenance issue"
+          />
+          <button
+            type="button"
+            className="btn btn-secondary" style={{ marginTop: 8 }}
+            onClick={handleSaveNotes}
+            disabled={savingNotes || statusNotes === (ticket.status_notes || "")}
+          >
+            {savingNotes ? "Saving…" : "Save notes"}
+          </button>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="card">

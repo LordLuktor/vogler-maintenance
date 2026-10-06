@@ -106,6 +106,7 @@ export interface Ticket {
   resolved_at: string | null;
   photos?: { id: number; url: string; mime_type: string }[];
   parts?: TicketPart[];
+  can_edit?: boolean;
 }
 
 export interface TicketPart {
