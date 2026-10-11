@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { sendAlertEmail } from "./email";
 
-const ALERT_EMAIL = process.env.ALERT_EMAIL || "scott@steinmetz.ltd";
+const ALERT_EMAIL = process.env.ALERT_EMAIL || "scott@apexweb.us";
 const RECEIPTS_ALERT_EMAIL = process.env.RECEIPTS_ALERT_EMAIL || "jblessing@voglerford.com";
 
 interface NewTicket {

@@ -1,6 +1,6 @@
 import { sendAlertEmail } from "./email";
 
-const ALERT_EMAIL = process.env.ALERT_EMAIL || "scott@steinmetz.ltd";
+const ALERT_EMAIL = process.env.ALERT_EMAIL || "scott@apexweb.us";
 
 interface LowStockArgs {
   itemName: string;
