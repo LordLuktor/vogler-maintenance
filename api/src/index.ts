@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import multer from "multer";
 import helmet from "helmet";
 import cors from "cors";
 import { authRouter } from "./routes/auth";
@@ -52,6 +53,20 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // Fail closed: unhandled errors never leak internals (stack traces, DB errors) to the client.
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Upload rejections are user errors (too many/too large/wrong type), not server faults.
+  if (err instanceof multer.MulterError) {
+    const messages: Partial<Record<string, string>> = {
+      LIMIT_FILE_COUNT: "Too many files in one upload",
+      LIMIT_UNEXPECTED_FILE: "Too many files in one upload",
+      LIMIT_FILE_SIZE: "One of the files is too large (15 MB max)"
+    };
+    res.status(400).json({ error: messages[err.code] || "Upload rejected" });
+    return;
+  }
+  if (err.message === "Unsupported file type") {
+    res.status(400).json({ error: "Unsupported file type" });
+    return;
+  }
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 });

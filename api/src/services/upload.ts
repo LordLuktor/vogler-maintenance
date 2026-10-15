@@ -22,9 +22,13 @@ const storage = multer.diskStorage({
   }
 });
 
+// Per-request cap; also the per-ticket total enforced in POST /tickets/:id/photos.
+export const MAX_PHOTOS_PER_REQUEST = 10;
+export const MAX_PHOTOS_PER_TICKET = 30;
+
 export const uploadPhoto = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 5 },
+  limits: { fileSize: 15 * 1024 * 1024, files: MAX_PHOTOS_PER_REQUEST },
   fileFilter: (_req, file, cb) => {
     if (!ALLOWED_MIME_TYPES[file.mimetype]) {
       cb(new Error("Unsupported file type"));

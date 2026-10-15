@@ -340,6 +340,32 @@ a.card:hover {
   border: 1px solid var(--line);
 }
 
+.photo-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photo-thumb {
+  position: relative;
+}
+
+.photo-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: var(--navy);
+  color: #fff;
+  font-size: 16px;
+  line-height: 24px;
+  padding: 0;
+  cursor: pointer;
+}
+
 /* Ticket/asset identifiers read as data, not prose */
 .id-mono {
   font-family: var(--font-mono);

@@ -284,6 +284,12 @@ export const api = {
 
   getTicket: (id: number) => request<Ticket>(`/tickets/${id}`),
 
+  addTicketPhotos: (id: number, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("photos", f));
+    return request<NonNullable<Ticket["photos"]>>(`/tickets/${id}/photos`, { method: "POST", body: formData });
+  },
+
   updateTicketStatus: (id: number, status: Ticket["status"], itemsUsed?: ItemUsage[], notes?: string) =>
     request<Ticket>(`/tickets/${id}/status`, {
       method: "PATCH",

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, getSession, Equipment, InventoryItem, InventoryStock, ItemUsage, Location, Ticket, TicketPart } from "../api/client";
 import { ISSUE_TYPES, issueTypeLabel } from "../issueTypes";
+import PhotoCapture from "../components/PhotoCapture";
 
 const STATUS_OPTIONS: Ticket["status"][] = ["new", "acknowledged", "in_progress", "done", "rejected", "duplicate"];
 
@@ -45,6 +46,26 @@ export default function TicketDetailPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
+  const [newPhotos, setNewPhotos] = useState<File[]>([]);
+  const [photoPickerKey, setPhotoPickerKey] = useState(0);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+
+  async function handleUploadPhotos() {
+    if (!ticket || newPhotos.length === 0) return;
+    setUploadingPhotos(true);
+    setPhotoError("");
+    try {
+      const photos = await api.addTicketPhotos(ticket.id, newPhotos);
+      setTicket({ ...ticket, photos });
+      setNewPhotos([]);
+      setPhotoPickerKey((k) => k + 1);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingPhotos(false);
+    }
+  }
 
   useEffect(() => {
     if (id) api.getTicket(Number(id)).then((t) => {
@@ -393,6 +414,18 @@ export default function TicketDetailPage() {
                   <img src={photo.url} alt="Reported issue" style={{ width: 120, height: 120 }} />
                 </a>
               ))}
+            </div>
+          )}
+
+          {ticket.can_edit !== false && (
+            <div style={{ marginTop: 12 }}>
+              <PhotoCapture key={photoPickerKey} onChange={setNewPhotos} label="Add photos" />
+              {newPhotos.length > 0 && (
+                <button type="button" className="btn" disabled={uploadingPhotos} onClick={handleUploadPhotos}>
+                  {uploadingPhotos ? "Uploading…" : `Upload ${newPhotos.length} photo${newPhotos.length === 1 ? "" : "s"}`}
+                </button>
+              )}
+              {photoError && <p className="error-text">{photoError}</p>}
             </div>
           )}
 

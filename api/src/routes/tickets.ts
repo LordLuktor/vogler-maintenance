@@ -3,7 +3,9 @@ import rateLimit from "express-rate-limit";
 import { body, query, validationResult } from "express-validator";
 import { db } from "../db";
 import { requireAuth, requireAdmin, optionalAuth, AuthedRequest } from "../middleware/auth";
-import { uploadPhoto } from "../services/upload";
+import fs from "fs/promises";
+import path from "path";
+import { uploadPhoto, UPLOAD_DIR, MAX_PHOTOS_PER_REQUEST, MAX_PHOTOS_PER_TICKET } from "../services/upload";
 import { notifyNewTicket, notifyTicketStatusChange } from "../services/notify";
 import { ISSUE_TYPES } from "../issueTypes";
 import { completeSchedule } from "../services/pmSchedules";
@@ -37,7 +39,7 @@ ticketsRouter.post(
   "/",
   reportLimiter,
   optionalAuth,
-  uploadPhoto.array("photos", 5),
+  uploadPhoto.array("photos", MAX_PHOTOS_PER_REQUEST),
   body("location_id").isInt().toInt(),
   body("equipment_id").optional({ values: "falsy" }).isInt().toInt(),
   body("issue_type").isIn(ISSUE_TYPES),
@@ -199,6 +201,61 @@ ticketsRouter.get("/:id", async (req: AuthedRequest, res: Response) => {
   const parts = await listTicketParts(ticketId);
   res.json({ ...ticket, photos, parts, can_edit: canEdit });
 });
+
+// Multer has already written the files to disk by the time a handler can reject the
+// request, so anything not recorded in ticket_photos must be removed again.
+async function discardUploads(files: Express.Multer.File[]) {
+  await Promise.all(
+    files.map((f) => fs.unlink(path.join(UPLOAD_DIR, path.basename(f.filename))).catch(() => undefined))
+  );
+}
+
+// Add more photos to an existing ticket (e.g. before/after shots). Same edit scope as
+// status changes — read-only receipts reviewers can't attach photos.
+ticketsRouter.post(
+  "/:id/photos",
+  uploadPhoto.array("photos", MAX_PHOTOS_PER_REQUEST),
+  async (req: AuthedRequest, res: Response) => {
+    const files = (req.files as Express.Multer.File[]) || [];
+    const ticketId = Number(req.params.id);
+    if (!Number.isInteger(ticketId)) {
+      await discardUploads(files);
+      res.status(400).json({ error: "Invalid ticket id" });
+      return;
+    }
+    if (files.length === 0) {
+      res.status(400).json({ error: "Attach at least one photo" });
+      return;
+    }
+
+    const allowedIds = await getAllowedLocationIds(req.user!);
+    const ticket = await db("tickets").where({ id: ticketId }).first("id", "location_id");
+    if (!ticket || (allowedIds !== null && !allowedIds.includes(ticket.location_id))) {
+      await discardUploads(files);
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+
+    const [{ count }] = await db("ticket_photos").where({ ticket_id: ticketId }).count<{ count: string }[]>("id as count");
+    if (Number(count) + files.length > MAX_PHOTOS_PER_TICKET) {
+      await discardUploads(files);
+      res.status(400).json({ error: `A ticket can have at most ${MAX_PHOTOS_PER_TICKET} photos` });
+      return;
+    }
+
+    await db("ticket_photos").insert(
+      files.map((file) => ({
+        ticket_id: ticketId,
+        url: `/uploads/${file.filename}`,
+        mime_type: file.mimetype,
+        size_bytes: file.size
+      }))
+    );
+
+    const photos = await db("ticket_photos").where({ ticket_id: ticketId }).select("id", "url", "mime_type");
+    res.status(201).json(photos);
+  }
+);
 
 ticketsRouter.patch(
   "/:id/status",
